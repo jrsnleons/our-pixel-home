@@ -20,7 +20,7 @@ export function flat(color: string, opts: { emissive?: string; transparent?: boo
   const k = `${color}|${opts.emissive ?? ''}|${opts.opacity ?? 1}`;
   let m = lambertCache.get(k);
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, emissive: opts.emissive ?? '#000000', transparent: opts.transparent, opacity: opts.opacity ?? 1 });
+    m = new THREE.MeshLambertMaterial({ color, emissive: opts.emissive ?? '#000000', transparent: !!opts.transparent, opacity: opts.opacity ?? 1 });
     m.userData.shared = true;
     lambertCache.set(k, m);
   }

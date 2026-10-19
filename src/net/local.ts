@@ -4,12 +4,12 @@
 import { applyMove, legalMoves, outcome } from '../core/boardgames';
 import { blockedTiles, key, ROOM, type Tile } from '../core/grid';
 import { findPath } from '../core/pathfinding';
-import { DAILY_LIMITS } from '../data/economy';
 import { DRAW_SECONDS } from '../data/words';
 import { DEFAULT_LOOK, type AvatarLook } from '../engine/art/avatar';
 import type { Backend, Handlers, Passage, RpcName, RpcResult, Rpcs } from './backend';
 import { ActionError } from './backend';
 import { fetchPassage } from './passage';
+import { dispatch, snapshotOf } from './dispatch';
 import * as R from './rules';
 import type { Game, LiveMsg, Profile, Snapshot } from './types';
 
@@ -27,34 +27,6 @@ function read(): Saved {
     if (raw) return JSON.parse(raw) as Saved;
   } catch { /* private mode or corrupt: start fresh */ }
   return { me: null, world: null, photos: {} };
-}
-
-export function snapshotOf(w: R.World, me: string): Snapshot {
-  const partnerId = w.couple.a === me ? w.couple.b : w.couple.a;
-  const tz = w.profiles[me]?.tz ?? 'UTC';
-  const day = R.dayIn(tz, new Date());
-  const today: Record<string, number> = {};
-  for (const k of Object.keys(DAILY_LIMITS)) {
-    const e = R.earnedToday(w, me, k, day);
-    today[k] = DAILY_LIMITS[k].count != null ? e.count : e.coins;
-  }
-  return {
-    me: w.profiles[me],
-    partner: partnerId ? w.profiles[partnerId] ?? null : null,
-    couple: w.couple,
-    placements: w.placements,
-    inventory: w.inventory,
-    unlocks: w.unlocks,
-    notebooks: w.notebooks,
-    pages: w.pages,
-    prayers: w.prayers,
-    // Quiet time is personal: the partner's entries only show when they chose to share.
-    devotions: w.devotions.filter((d) => d.author === me || d.shared),
-    events: w.events,
-    quests: R.questStates(w),
-    games: w.games,
-    today,
-  };
 }
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -128,61 +100,30 @@ export class LocalBackend implements Backend {
 
   async call<K extends RpcName>(name: K, args: Rpcs[K]): Promise<RpcResult> {
     if (!this.s.world) throw new ActionError('Pair up first.');
-    const c = this.ctx();
-    const a = args as Record<string, never> & Rpcs[K];
-    let result: unknown;
-    let coins = 0;
+    let out: { result?: unknown; coins: number };
     try {
-      switch (name) {
-        case 'buy': result = R.buy(c, (a as Rpcs['buy']).item); break;
-        case 'place': { const p = a as Rpcs['place']; result = R.place(c, p.invId, p); break; }
-        case 'move': { const p = a as Rpcs['move']; R.move(c, p.pid, p); break; }
-        case 'store': R.store(c, (a as Rpcs['store']).pid); break;
-        case 'set_style': R.setStyle(c, (a as Rpcs['set_style']).style); break;
-        case 'set_look': R.setLook(c, (a as Rpcs['set_look']).look); break;
-        case 'set_profile': { const p = a as Rpcs['set_profile']; const me = this.s.world.profiles[ME]; if (p.name) me.name = p.name.trim().slice(0, 24); if (p.city !== undefined) me.city = p.city; if (p.tz) me.tz = p.tz; break; }
-        case 'set_couple': R.setCouple(c, a as Rpcs['set_couple']); break;
-        case 'placement_data': { const p = a as Rpcs['placement_data']; R.setPlacementData(c, p.pid, p.patch); break; }
-        case 'water': result = R.water(c, (a as Rpcs['water']).pid); break;
-        case 'claim_daily': { const r = R.claimDaily(c, this.partnerOnline && !!this.s.world.couple.b); coins = r.coins; result = r; break; }
-        case 'together_tick': coins = R.togetherTick(c, this.partnerOnline); break;
-        case 'heart': coins = R.heart(c); this.maybeHeartBack(); break;
-        case 'interaction': R.interaction(c, (a as Rpcs['interaction']).id, { day: this.day(), theme: '' }); break;
-        case 'nudge': { const p = a as Rpcs['nudge']; R.nudge(c, p.kind, p.text, p.ref); break; }
-        case 'notebook_create': { const p = a as Rpcs['notebook_create']; result = R.notebookCreate(c, p.title, p.color); break; }
-        case 'page_write': { const p = a as Rpcs['page_write']; const r = R.pageWrite(c, p.notebookId, p.title, p.body); coins = r.coins; result = r.id; break; }
-        case 'page_edit': { const p = a as Rpcs['page_edit']; R.pageEdit(c, p.pageId, p.title, p.body); break; }
-        case 'page_delete': R.pageDelete(c, (a as Rpcs['page_delete']).pageId); break;
-        case 'prayer_add': result = R.prayerAdd(c, (a as Rpcs['prayer_add']).text); this.samPrays(result as string); break;
-        case 'prayer_pray': R.prayerPray(c, (a as Rpcs['prayer_pray']).id); break;
-        case 'prayer_answer': { const p = a as Rpcs['prayer_answer']; R.prayerAnswer(c, p.id, p.note); break; }
-        case 'prayer_delete': R.prayerDelete(c, (a as Rpcs['prayer_delete']).id); break;
-        case 'devotion': { const p = a as Rpcs['devotion']; const r = R.devotion(c, p.passage, p.reflection, p.shared); coins = r.coins; result = r; break; }
-        case 'quest_claim': coins = R.questClaim(c, (a as Rpcs['quest_claim']).key); break;
-        case 'game_start': { const g = R.gameStart(c, (a as Rpcs['game_start']).kind); result = g.id; this.samGame(g.id); break; }
-        case 'game_move': { const p = a as Rpcs['game_move']; const r = R.gameMove(c, p.gameId, p.move); coins = r.coins; this.samGame(p.gameId); break; }
-        case 'game_resign': R.gameResign(c, (a as Rpcs['game_resign']).gameId); break;
-        case 'draw_word': result = R.drawWord(c, (a as Rpcs['draw_word']).gameId); break;
-        case 'draw_guess': { const p = a as Rpcs['draw_guess']; const r = R.drawGuess(c, p.gameId, p.guess); coins = r.coins; result = { right: r.right, word: r.word }; if (r.right) this.samGame(p.gameId); break; }
-        case 'draw_skip': { const r = R.drawSkip(c, (a as Rpcs['draw_skip']).gameId); coins = r.coins; result = { word: r.word }; this.samGame(r.game.id); break; }
-        case 'shift_start': result = R.shiftStart(c, (a as Rpcs['shift_start']).together); break;
-        case 'shift_finish': { const p = a as Rpcs['shift_finish']; const r = R.shiftFinish(c, p.shiftId, p.served, p.missed); coins = r.pay; result = r; this.samFinishShift(p.shiftId, p.served, p.missed); break; }
-        case 'unpair': R.unpair(c); break;
-        case 'restore': R.restore(c); break;
-        default: throw new ActionError('Not available in the preview.');
-      }
+      out = dispatch(this.ctx(), name, args, { partnerOnline: this.partnerOnline && !!this.s.world.couple.b });
+      R.compact(this.s.world, new Date());
     } catch (e) {
       if (e instanceof R.RuleError) throw new ActionError(e.message);
       throw e;
     }
     this.save();
-    return { ...this.snap(), result, coinsEarned: coins };
+    this.reactTo(name, args, out.result);
+    return { ...this.snap(), result: out.result, coinsEarned: out.coins };
   }
 
-  private day() {
-    const since = this.s.world?.couple.since;
-    if (!since) return 1;
-    return Math.floor((Date.now() - Date.parse(since)) / 86_400_000) + 1;
+  /** The pretend partner's reactions to what you just did. */
+  private reactTo<K extends RpcName>(name: K, args: Rpcs[K], result: unknown) {
+    switch (name) {
+      case 'heart': this.maybeHeartBack(); break;
+      case 'prayer_add': this.samPrays(result as string); break;
+      case 'game_start': this.samGame(result as string); break;
+      case 'game_move': this.samGame((args as Rpcs['game_move']).gameId); break;
+      case 'draw_guess': if ((result as { right: boolean }).right) this.samGame((args as Rpcs['draw_guess']).gameId); break;
+      case 'draw_skip': this.samGame((args as Rpcs['draw_skip']).gameId); break;
+      case 'shift_finish': { const p = args as Rpcs['shift_finish']; this.samFinishShift(p.shiftId, p.served, p.missed); break; }
+    }
   }
 
   // ---------- realtime & the simulated partner ----------

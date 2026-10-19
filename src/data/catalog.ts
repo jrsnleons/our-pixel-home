@@ -1,6 +1,5 @@
-// Everything the store sells. The server keeps its own copy of key, price and kind
-// (generated from this file by `npm run gen:catalog-sql`) so prices can't be edited
-// client-side; a unit test fails if the two drift apart.
+// Everything the store sells. The server bundles this same file (npm run build:api), so
+// prices are checked on the server and can't be changed from a phone.
 
 export type Category =
   | 'bed' | 'table' | 'seating' | 'lighting' | 'storage'

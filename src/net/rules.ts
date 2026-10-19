@@ -1,6 +1,6 @@
 // The game's rules as plain functions over a couple's whole world. The preview backend runs
-// these directly; the Supabase backend runs the same rules in SQL (supabase/migrations), and
-// tests/rules.test.ts pins the behaviour both must share.
+// them in the browser and the `api` edge function runs the very same code on the server
+// (via src/net/dispatch.ts); tests/rules.test.ts pins the behaviour.
 
 import { applyMove, emptyBoard, outcome, type GameKind as BoardKind } from '../core/boardgames';
 import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '../core/grid';
@@ -205,13 +205,40 @@ export function autoSpot(w: World, item: string) {
 export function setStyle(c: Ctx, style: RoomStyleRow) {
   for (const k of [style.wallpaper, style.floor]) if (!c.w.unlocks.includes(k)) throw new RuleError('Buy that style in the store first.');
   if (!/^(#[0-9a-fA-F]{6})?$/.test(style.wallTint) || !(style.floorTint == null || /^#[0-9a-fA-F]{6}$/.test(style.floorTint))) throw new RuleError('Pick a swatch.');
-  c.w.couple.style = { ...style };
+  c.w.couple.style = { wallpaper: style.wallpaper, wallTint: style.wallTint, floor: style.floor, floorTint: style.floorTint ?? null };
   event(c, 'decor', {});
 }
 
+export function setProfile(c: Ctx, patch: { name?: string; city?: string | null; tz?: string }) {
+  const me = c.w.profiles[c.me];
+  if (patch.name !== undefined) {
+    const n = patch.name.trim().slice(0, 24);
+    if (!n) throw new RuleError('What should your partner call you?');
+    me.name = n;
+  }
+  if (patch.city !== undefined) me.city = patch.city ? patch.city.trim().slice(0, 40) || null : null;
+  if (patch.tz !== undefined) {
+    if (!validTz(patch.tz)) throw new RuleError('That time zone isn’t right.');
+    me.tz = patch.tz;
+  }
+}
+
+export function validTz(tz: string): boolean {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz.length <= 64; } catch { return false; }
+}
+
 export function setLook(c: Ctx, look: AvatarLook) {
-  for (const k of [look.outfit, look.accessory]) if (!c.w.unlocks.includes(k)) throw new RuleError('Buy that in the store first.');
-  c.w.profiles[c.me].look = { ...look };
+  const l = cleanLook(look);
+  for (const k of [l.outfit, l.accessory]) if (!c.w.unlocks.includes(k)) throw new RuleError('Buy that in the store first.');
+  c.w.profiles[c.me].look = l;
+}
+
+/** Only the fields an avatar has, in range. Looks arrive from the network on the server. */
+export function cleanLook(look: AvatarLook): AvatarLook {
+  const n = (v: unknown, max: number) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= max ? (v as number) : 0);
+  const k = (v: unknown, fallback: string) => (typeof v === 'string' && /^[a-z0-9_]{1,24}$/.test(v) ? v : fallback);
+  if (!look || typeof look !== 'object') throw new RuleError('Pick a look first.');
+  return { skin: n(look.skin, 9), hair: k(look.hair, 'short'), hairColor: n(look.hairColor, 15), outfit: k(look.outfit, 'fit_tee'), accessory: k(look.accessory, 'acc_none'), eyes: n(look.eyes, 9) };
 }
 
 const ALLOWED_DATA = ['photo', 'pixelate', 'verse', 'caption', 'takenAt'];
@@ -565,6 +592,20 @@ export function restore(c: Ctx) {
   if (!at) return;
   if (c.now.getTime() - Date.parse(at) > 30 * 86_400_000) throw new RuleError('This home was archived more than 30 days ago.');
   c.w.couple.archivedAt = null;
+}
+
+// ---------- housekeeping ----------
+
+/**
+ * Trim what only matters for a while, so a couple's world stays small: old ledger rows (limits
+ * only look at today; streak and quest rows are kept because they're once-ever), secret words
+ * for games that have been dropped.
+ */
+export function compact(w: World, now: Date) {
+  const cutoff = new Date(now.getTime() - 45 * 86_400_000).toISOString().slice(0, 10);
+  w.ledger = w.ledger.filter((l) => l.day >= cutoff || l.reason.startsWith('streak_') || l.reason.startsWith('quest:'));
+  const live = new Set(w.games.map((g) => g.id));
+  for (const k of Object.keys(w.words)) if (!live.has(k)) delete w.words[k];
 }
 
 export function placementCells(p: Placement) {

@@ -1,5 +1,5 @@
-// Coin rules from mvp-features.md. The server enforces these in SQL (supabase/migrations);
-// the client only uses them to explain rewards ("+10, 2 left today").
+// Coin rules from mvp-features.md. The server enforces them by running src/net/rules.ts in the
+// `api` edge function; the client also uses them to explain rewards ("+10, 2 left today").
 
 export const REWARDS = {
   dailyVisit: { coins: 10, perDay: 1 },
@@ -42,7 +42,7 @@ export function cafeXpForLevel(level: number): number {
 
 /**
  * Coins for one shift. `quality` is served orders / orders that could have been served (0..1).
- * Mirrors public.cafe_payout() in SQL.
+ * Runs on the server too, as part of the shared rules.
  */
 export function cafePayout(opts: { together: boolean; quality: number; level: number; shiftsToday: number }): number {
   const base = opts.together ? CAFE.togetherPayEach : CAFE.soloPay;

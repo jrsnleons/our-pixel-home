@@ -1,5 +1,5 @@
-// Rules for the two table games. The server runs the same rules in SQL
-// (public.game_move) and is the referee; the client uses these for instant feedback.
+// Rules for the two table games. The server runs this same code as the referee (it's part of
+// the api bundle); the client uses it for instant feedback.
 
 export type GameKind = 'connect4' | 'tictactoe';
 /** Cells hold 0 (empty), 1 (player who started), 2 (the other player). */
