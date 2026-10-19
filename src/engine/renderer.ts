@@ -135,7 +135,30 @@ export class Renderer {
     this.bloom.strength = bloom;
     (this.grade.uniforms.tint.value as THREE.Color).set(tint);
     this.grade.uniforms.tintAmt.value = tintAmt;
-    this.scene.background = new THREE.Color(backdrop);
+    // A soft pool of light behind the room instead of a flat void; dithered so it reads as
+    // pixel art rather than a smooth gradient.
+    const W = 128, H = 256;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d')!;
+    const base = new THREE.Color(backdrop);
+    const glow = base.clone().lerp(new THREE.Color(tint), 0.3).multiplyScalar(1.5);
+    const edge = base.clone().multiplyScalar(0.7);
+    const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    const img = g.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = (x - W / 2) / (W * 0.62), dy = (y - H * 0.46) / (H * 0.42);
+      let t = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy));
+      t = Math.floor(t * 7 + bayer[(y % 4) * 4 + (x % 4)] / 16) / 7; // 7 dithered steps
+      const col = edge.clone().lerp(glow, t);
+      const i = (y * W + x) * 4;
+      img.data[i] = Math.min(255, col.r * 255); img.data[i + 1] = Math.min(255, col.g * 255); img.data[i + 2] = Math.min(255, col.b * 255); img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    (this.scene.background as THREE.Texture | null)?.dispose?.();
+    this.scene.background = tex;
   }
 
   get quality(): QualityLevel { return LADDER[this.level]; }

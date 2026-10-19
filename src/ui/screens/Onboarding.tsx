@@ -1,0 +1,168 @@
+// First-run screens: tap to enter, sign in, make your avatar, pair with your partner.
+
+import { useEffect, useState } from 'preact/hooks';
+import { unlockAudio, sfx } from '../../audio/audio';
+import { DEFAULT_LOOK, type AvatarLook } from '../../engine/art/avatar';
+import { ActionError } from '../../net/backend';
+import { backend, phase, snap, toast } from '../../state/store';
+import { AvatarEditor, AvatarPreview } from '../AvatarEditor';
+import { BootArt } from '../BootArt';
+import { Field, Icon } from '../kit';
+
+export function Boot({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div class="screen boot" onClick={() => { unlockAudio(); sfx('open'); onEnter(); }}>
+      <BootArt />
+      <div class="title-logo">Our Pixel<br />Home</div>
+      <p class="blink" style={{ color: '#fff', textShadow: '2px 2px 0 var(--outline)' }}>Tap to come in</p>
+    </div>
+  );
+}
+
+export function SignIn() {
+  const [busy, setBusy] = useState(false);
+  const online = backend.mode === 'online';
+  return (
+    <div class="screen boot" style={{ cursor: 'default' }}>
+      <BootArt />
+      <div class="title-logo">Our Pixel<br />Home</div>
+      <div class="pbox col" style={{ padding: '18px', width: '100%', maxWidth: '340px' }}>
+        <p class="center" style={{ margin: 0 }}>A little home for the two of you, wherever you are.</p>
+        {online ? (
+          <button class="btn block" disabled={busy} onClick={async () => { setBusy(true); try { await backend.signIn(); } catch { toast('Couldn’t open Google sign-in.', 'error'); setBusy(false); } }}>
+            <GoogleG /> Continue with Google
+          </button>
+        ) : (
+          <>
+            <button class="btn block" onClick={() => { phase.value = 'profile'; }}>Try the preview</button>
+            <p class="tiny muted center" style={{ margin: 0 }}>Preview mode: everything stays on this phone and a pretend partner named Sam keeps you company. Add the Supabase keys to play together for real.</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GoogleG() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" style={{ background: '#fff', padding: '2px' }}>
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6.1C12.4 13.7 17.7 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z" />
+      <path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.8-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6.1z" />
+      <path fill="#34A853" d="M24 48c6.2 0 11.6-2 15.4-5.5l-7.6-5.9c-2.1 1.4-4.8 2.3-7.8 2.3-6.3 0-11.6-4.2-13.5-9.9l-7.8 6.1C6.6 42.6 14.6 48 24 48z" />
+    </svg>
+  );
+}
+
+export function MakeProfile({ suggested }: { suggested?: string | null }) {
+  const [name, setName] = useState(suggested?.split(' ')[0] ?? '');
+  const [look, setLook] = useState<AvatarLook>({ ...DEFAULT_LOOK, hair: (['short', 'bob', 'long', 'curly'] as const)[Math.floor(Math.random() * 4)], hairColor: Math.floor(Math.random() * 5), skin: Math.floor(Math.random() * 6) });
+  const [busy, setBusy] = useState(false);
+  const owned = new Set(['fit_tee', 'fit_hoodie', 'acc_none', 'acc_glasses']);
+  const go = async () => {
+    if (!name.trim()) { toast('What should your partner call you?', 'error'); return; }
+    setBusy(true);
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const me = await backend.createProfile(name, look, tz);
+      snap.value = { me, partner: null, couple: null, placements: [], inventory: [], unlocks: [], notebooks: [], pages: [], prayers: [], devotions: [], events: [], quests: [], games: [], today: {} };
+      sfx('pop');
+      phase.value = 'pair';
+    } catch (e) {
+      toast(e instanceof ActionError ? e.message : 'Couldn’t save. Try again.', 'error');
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="screen" style={{ background: 'var(--bg)' }}>
+      <h1 style={{ fontWeight: 'normal', margin: '0 0 6px' }}>Make your little you</h1>
+      <p class="muted small" style={{ marginTop: 0 }}>You can change all of this later in Me.</p>
+      <Field label="Your name"><input class="input" value={name} maxLength={24} onInput={(e) => setName(e.currentTarget.value)} placeholder="Name" autocomplete="given-name" /></Field>
+      <div style={{ height: '14px' }} />
+      <AvatarEditor look={look} onChange={setLook} owned={owned} onlyOwned />
+      <div style={{ height: '16px' }} />
+      <button class="btn block" disabled={busy} onClick={go}>That’s me</button>
+    </div>
+  );
+}
+
+export function Pair({ onDone }: { onDone: () => void }) {
+  const [mode, setMode] = useState<'choose' | 'join'>('choose');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const couple = snap.value?.couple;
+  const create = async () => {
+    setBusy(true);
+    try { snap.value = await backend.createCouple(); sfx('open'); } catch (e) { toast(e instanceof ActionError ? e.message : 'Couldn’t make a home. Try again.', 'error'); }
+    setBusy(false);
+  };
+  const join = async () => {
+    setBusy(true);
+    try { snap.value = await backend.joinCouple(code); sfx('win'); onDone(); } catch (e) { toast(e instanceof ActionError ? e.message : 'That code didn’t work.', 'error'); setBusy(false); }
+  };
+  const meP = snap.value?.me;
+  const them = snap.value?.partner;
+  // When your partner types the code in, celebrate for a beat and walk in together.
+  const joined = !!couple?.b;
+  useEffect(() => {
+    if (!joined || mode === 'join') return;
+    sfx('win');
+    const t = setTimeout(onDone, 1800);
+    return () => clearTimeout(t);
+  }, [joined]);
+  const pairArt = meP && (
+    <div class="pair-art">
+      <AvatarPreview look={meP.look} scale={4} />
+      <span class={`pair-heart ${joined ? 'on' : ''}`}><Icon name="heart" size="l" /></span>
+      {them ? <AvatarPreview look={them.look} scale={4} /> : <div class="avatar-stage pbox soft ghost-partner"><Icon name="me" size="l" /></div>}
+    </div>
+  );
+  if (couple && joined) {
+    return (
+      <div class="screen" style={{ background: 'var(--bg)', justifyContent: 'center' }}>
+        {pairArt}
+        <h2 class="center" style={{ fontWeight: 'normal' }}>{them?.name ?? 'Your partner'} moved in!</h2>
+      </div>
+    );
+  }
+  if (couple && !couple.b) {
+    const share = async () => {
+      const text = `Come live in our pixel home with me 🏠 Code: ${couple.inviteCode}\n${location.origin}`;
+      try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); toast('Copied. Send it to your partner.'); } } catch { /* cancelled */ }
+    };
+    return (
+      <div class="screen" style={{ background: 'var(--bg)', justifyContent: 'center' }}>
+        {pairArt}
+        <div class="pbox col" style={{ padding: '18px' }}>
+          <h2 style={{ fontWeight: 'normal', margin: 0 }}>Your home is ready</h2>
+          <p class="small" style={{ margin: 0 }}>Send this code to your partner. When they type it in, you’ll share this home.</p>
+          <div class="code pbox">{couple.inviteCode}</div>
+          <button class="btn block" onClick={share}><Icon name="send" size="s" /> Send the code</button>
+          <p class="tiny muted center blink" style={{ margin: 0 }}>Waiting for them to join…</p>
+          <button class="btn ghost block small" onClick={onDone}>Look around while I wait</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div class="screen" style={{ background: 'var(--bg)', justifyContent: 'center' }}>
+      {pairArt}
+      <div class="pbox col" style={{ padding: '18px' }}>
+        <h2 style={{ fontWeight: 'normal', margin: 0 }}>Pair up</h2>
+        {mode === 'choose' ? (
+          <>
+            <p class="small" style={{ margin: 0 }}>One of you makes the home and sends a code. The other joins with it.</p>
+            <button class="btn block" disabled={busy} onClick={create}>Make our home</button>
+            <button class="btn soft block" onClick={() => setMode('join')}>I have a code</button>
+          </>
+        ) : (
+          <>
+            <Field label="Code from your partner"><input class="input" value={code} onInput={(e) => setCode(e.currentTarget.value.toUpperCase())} placeholder="ABCD-1234" autocapitalize="characters" /></Field>
+            <button class="btn block" disabled={busy || code.trim().length < 4} onClick={join}>Join their home</button>
+            <button class="btn ghost block small" onClick={() => setMode('choose')}>Back</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

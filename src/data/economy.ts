@@ -62,3 +62,24 @@ export function daysTogether(since: string | null, today: Date = new Date()): nu
   const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
   return Math.max(1, Math.floor((now - start) / 86_400_000) + 1);
 }
+
+/** "First week together" starter quests. Each pays into the shared wallet once. */
+export const QUESTS = [
+  { key: 'buy_bed', label: 'Buy a real bed', hint: 'Store → Furniture', coins: 60 },
+  { key: 'place_table', label: 'Place a table', hint: 'Decorate → your storage box', coins: 40 },
+  { key: 'first_game', label: 'Play your first game', hint: 'Tap the games table', coins: 50 },
+  { key: 'first_note', label: 'Write your first note', hint: 'Notes → Notebooks', coins: 40 },
+  { key: 'first_quiet', label: 'Do your first quiet time', hint: 'Notes → Quiet time', coins: 40 },
+  { key: 'first_heart', label: 'Send your first heart', hint: 'Tap your partner', coins: 30 },
+] as const;
+
+/** Reasons with a daily limit, and whether the limit is per person or shared by the couple. */
+export const DAILY_LIMITS: Record<string, { scope: 'user' | 'couple'; count?: number; coins?: number }> = {
+  daily_visit: { scope: 'user', count: REWARDS.dailyVisit.perDay },
+  both_online: { scope: 'couple', count: REWARDS.bothOnline.perDay },
+  together: { scope: 'couple', coins: REWARDS.together.dailyCap },
+  home_game: { scope: 'couple', count: REWARDS.homeGame.perDay },
+  notebook_page: { scope: 'user', count: REWARDS.notebookPage.perDay },
+  devotion: { scope: 'user', count: REWARDS.devotion.perDay },
+  heart: { scope: 'user', count: REWARDS.heart.perDay },
+};

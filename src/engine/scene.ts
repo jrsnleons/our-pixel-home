@@ -562,8 +562,17 @@ export class HomeScene {
   // ---------- Decorate mode ----------
 
   private makeGrid(n: number): THREE.InstancedMesh {
-    const geo = new THREE.PlaneGeometry(0.92, 0.92);
-    const mat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.32, depthWrite: false });
+    // Cell outlines with a faint fill, so the grid reads as guides, not as a new floor.
+    const geo = new THREE.PlaneGeometry(0.96, 0.96);
+    const c = document.createElement('canvas'); c.width = c.height = 16;
+    const g = c.getContext('2d')!;
+    g.fillStyle = 'rgba(255,255,255,.22)'; g.fillRect(0, 0, 16, 16);
+    g.clearRect(1, 1, 14, 14);
+    g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(1, 1, 14, 14);
+    g.fillStyle = 'rgba(255,255,255,.6)'; for (const [x, y] of [[0, 0], [15, 0], [0, 15], [15, 15]]) g.fillRect(x, y, 1, 1);
+    const map = new THREE.CanvasTexture(c);
+    map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestFilter;
+    const mat = new THREE.MeshBasicMaterial({ map, color: '#ffffff', transparent: true, depthWrite: false, toneMapped: false });
     const m = new THREE.InstancedMesh(geo, mat, n);
     m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
     m.visible = false;
@@ -592,7 +601,8 @@ export class HomeScene {
 
   private paintGrid() {
     const base = new THREE.Color('#FFFFFF');
-    const good = new THREE.Color('#5BE07A'), bad = new THREE.Color('#FF5A5A'), sel = new THREE.Color('#FFD25A');
+    // Marked cells are pushed past 1 so the faint fill becomes a clear tint.
+    const good = new THREE.Color('#5BE07A').multiplyScalar(4), bad = new THREE.Color('#FF5A5A').multiplyScalar(4), sel = new THREE.Color('#FFD25A').multiplyScalar(4);
     const color = (m: THREE.InstancedMesh, i: number, c: THREE.Color) => m.setColorAt(i, c);
     const floorTaken = blockedTiles(this.placements);
     for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) color(this.gridFloor, y * ROOM.w + x, floorTaken.has(key(x, y)) ? base.clone().multiplyScalar(0.55) : base);
@@ -612,14 +622,15 @@ export class HomeScene {
       mark(this.placing.surface, cellsOf(def, this.placing), this.placing.fit.ok ? good : bad);
     }
     for (const m of [this.gridFloor, this.gridWalls.back, this.gridWalls.left]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    // Wall guides only matter while a wall item is in hand or selected.
+    const wallActive = (this.placing && this.placing.surface !== 'floor') || (!this.placing && this.selected && this.items.get(this.selected)?.p.surface !== 'floor');
+    this.gridWalls.back.visible = this.gridWalls.left.visible = this.decorating && !!wallActive;
   }
 
   setDecorating(on: boolean) {
     this.decorating = on;
     if (!on) { this.cancelPlacing(); this.selected = null; }
     this.gridFloor.visible = on;
-    this.gridWalls.back.visible = on;
-    this.gridWalls.left.visible = on;
     this.paintGrid();
   }
 

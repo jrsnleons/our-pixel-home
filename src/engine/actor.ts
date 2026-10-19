@@ -57,6 +57,7 @@ export class Actor {
   offset = new THREE.Vector3();
   private offsetTarget = new THREE.Vector3();
   hop = 0;
+  private idleFor = 0;
   look: AvatarLook;
 
   constructor(look: AvatarLook, tile: Tile, readonly isMe: boolean) {
@@ -189,6 +190,13 @@ export class Actor {
     }
     this.elevation += (this.elevTarget - this.elevation) * Math.min(1, dt * 10);
     this.offset.lerp(this.offsetTarget, Math.min(1, dt * 8));
+
+    // Standing around with your back to the camera reads as a faceless blob, so after a few
+    // idle seconds people turn to face the room (the front view of the same diagonal).
+    if (!this.path.length && !this.override && this.elevTarget === 0 && !this.lying) {
+      this.idleFor += dt;
+      if (this.idleFor > 3.5 && FACING_VIEW[this.facing].back) this.facing = this.facing === '-x' ? '+z' : '+x';
+    } else this.idleFor = 0;
 
     const anim = this.override ?? (this.path.length ? WALK : IDLE);
     if (anim !== this.anim) { this.anim = anim; this.animT = 0; }
