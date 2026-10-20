@@ -31,9 +31,17 @@ export class SupabaseBackend implements Backend {
     return { id: u.id, email: u.email, name: meta.full_name ?? meta.name ?? null, avatarUrl: meta.avatar_url ?? null };
   }
 
-  async signIn() {
-    const { error } = await this.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin } });
-    if (error) throw error;
+  async signIn(email: string, password: string, create: boolean) {
+    const clean = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) throw new ActionError('That email doesn’t look right.');
+    if (password.length < 8) throw new ActionError('Use at least 8 characters for your password.');
+    const { data, error } = create
+      ? await this.sb.auth.signUp({ email: clean, password })
+      : await this.sb.auth.signInWithPassword({ email: clean, password });
+    if (error) throw new ActionError(authMessage(error.message, create));
+    // With email confirmation switched on, sign-up returns no session until the link is clicked.
+    if (!data.session) throw new ActionError('Check your email for a link to confirm your account, then sign in here.');
+    this.uid = data.session.user.id;
   }
 
   async signOut() { await this.ch?.unsubscribe(); await this.sb.auth.signOut(); }
@@ -159,4 +167,16 @@ export class SupabaseBackend implements Backend {
   passage(book: number, chapter: number, from?: number, to?: number): Promise<Passage> {
     return fetchPassage(book, chapter, from, to);
   }
+}
+
+/** Supabase Auth's messages, in the app's own words. */
+function authMessage(raw: string, create: boolean): string {
+  const m = raw.toLowerCase();
+  if (m.includes('invalid login credentials')) return 'That email and password don’t match.';
+  if (m.includes('already registered') || m.includes('already been registered')) return 'That email already has an account. Sign in instead.';
+  if (m.includes('email not confirmed')) return 'Confirm your email first, then sign in.';
+  if (m.includes('rate limit') || m.includes('too many')) return 'Too many tries. Wait a minute and try again.';
+  if (m.includes('not authorized')) return 'Sign-ups need email confirmation turned off in Supabase for now.';
+  if (m.includes('password')) return raw;
+  return create ? 'Couldn’t make your account. Try again.' : 'Couldn’t sign in. Try again.';
 }

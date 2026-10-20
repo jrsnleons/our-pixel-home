@@ -4,7 +4,7 @@
 import { useSignalEffect } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import { setSfx } from '../audio/audio';
-import { backend, coupleId, markFeedSeen, merge, partnerLastSeen, partnerOnline, phase, prefs, snap, toasts } from '../state/store';
+import { backend, coupleId, markFeedSeen, merge, partnerLastSeen, partnerOnline, phase, prefs, route, snap, suggestedName, toasts } from '../state/store';
 import { Icon } from './kit';
 import { Home, deliverLive } from './screens/Home';
 import { Boot, MakeProfile, Pair, SignIn } from './screens/Onboarding';
@@ -12,24 +12,13 @@ import { applyTheme } from './theme';
 
 export function App() {
   const [entered, setEntered] = useState(false);
-  const [suggested, setSuggested] = useState<string | null>(null);
 
   useSignalEffect(() => { applyTheme(prefs.value.theme); });
   useEffect(() => { setSfx(prefs.value.sfx); }, []);
 
   // Work out where to start.
   useEffect(() => {
-    void (async () => {
-      const u = await backend.user();
-      if (!u) { phase.value = 'signin'; return; }
-      setSuggested(u.name ?? null);
-      const s = await backend.load();
-      if (!s) { phase.value = 'profile'; return; }
-      snap.value = s;
-      if (!s.couple) phase.value = 'pair';
-      else if (s.couple.archivedAt) phase.value = 'archived';
-      else phase.value = 'home';
-    })().catch((e) => { console.error(e); phase.value = 'signin'; });
+    route().catch((e) => { console.error(e); phase.value = 'signin'; });
   }, []);
 
   // Realtime once there's a couple.
@@ -49,7 +38,7 @@ export function App() {
     <div class="stage">
       {p === 'boot' || !entered ? <Boot onEnter={() => setEntered(true)} />
         : p === 'signin' ? <SignIn />
-        : p === 'profile' ? <MakeProfile suggested={suggested} />
+        : p === 'profile' ? <MakeProfile suggested={suggestedName.value} />
         : p === 'pair' ? <Pair onDone={() => { markFeedSeen(); phase.value = 'home'; }} />
         : p === 'archived' ? <Archived />
         : snap.value?.couple ? <Home /> : null}

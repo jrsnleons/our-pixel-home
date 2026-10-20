@@ -38,6 +38,21 @@ export let backend: Backend;
 export function setBackend(b: Backend) { backend = b; }
 
 export const phase = signal<Phase>('boot');
+/** A name to prefill when making the avatar, from the account if it has one. */
+export const suggestedName = signal<string | null>(null);
+
+/** Pick the screen for where this person is: signed out, no avatar yet, unpaired, or home. */
+export async function route() {
+  const u = await backend.user();
+  if (!u) { phase.value = 'signin'; return; }
+  suggestedName.value = u.name ?? null;
+  const s = await backend.load();
+  if (!s) { phase.value = 'profile'; return; }
+  snap.value = s;
+  if (!s.couple) phase.value = 'pair';
+  else if (s.couple.archivedAt) phase.value = 'archived';
+  else phase.value = 'home';
+}
 export const snap = signal<Snapshot | null>(null);
 export const partnerOnline = signal(false);
 export const partnerLastSeen = signal<string | null>(null);

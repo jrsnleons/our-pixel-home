@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { unlockAudio, sfx } from '../../audio/audio';
 import { DEFAULT_LOOK, type AvatarLook } from '../../engine/art/avatar';
 import { ActionError } from '../../net/backend';
-import { backend, phase, snap, toast } from '../../state/store';
+import { backend, phase, route, snap, toast } from '../../state/store';
 import { AvatarEditor, AvatarPreview } from '../AvatarEditor';
 import { BootArt } from '../BootArt';
 import { Field, Icon } from '../kit';
@@ -21,7 +21,22 @@ export function Boot({ onEnter }: { onEnter: () => void }) {
 
 export function SignIn() {
   const [busy, setBusy] = useState(false);
+  const [create, setCreate] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const online = backend.mode === 'online';
+  const go = async (e: Event) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await backend.signIn(email, password, create);
+      sfx('pop');
+      await route();
+    } catch (err) {
+      toast(err instanceof ActionError ? err.message : 'Couldn’t reach the server. Check your connection.', 'error');
+      setBusy(false);
+    }
+  };
   return (
     <div class="screen boot" style={{ cursor: 'default' }}>
       <BootArt />
@@ -29,9 +44,16 @@ export function SignIn() {
       <div class="pbox col" style={{ padding: '18px', width: '100%', maxWidth: '340px' }}>
         <p class="center" style={{ margin: 0 }}>A little home for the two of you, wherever you are.</p>
         {online ? (
-          <button class="btn block" disabled={busy} onClick={async () => { setBusy(true); try { await backend.signIn(); } catch { toast('Couldn’t open Google sign-in.', 'error'); setBusy(false); } }}>
-            <GoogleG /> Continue with Google
-          </button>
+          <form class="col" style={{ gap: '10px' }} onSubmit={go}>
+            <Field label="Email"><input id="signin-email" class="input" type="email" inputMode="email" autocomplete="email" value={email} onInput={(e) => setEmail(e.currentTarget.value)} required /></Field>
+            <Field label={create ? 'Make a password (8+ characters)' : 'Password'}>
+              <input id="signin-password" class="input" type="password" minLength={8} autocomplete={create ? 'new-password' : 'current-password'} value={password} onInput={(e) => setPassword(e.currentTarget.value)} required />
+            </Field>
+            <button class="btn block" type="submit" disabled={busy}>{create ? 'Make my account' : 'Sign in'}</button>
+            <button class="btn ghost small block" type="button" disabled={busy} onClick={() => setCreate(!create)}>
+              {create ? 'I already have an account' : 'New here? Make an account'}
+            </button>
+          </form>
         ) : (
           <>
             <button class="btn block" onClick={() => { phase.value = 'profile'; }}>Try the preview</button>
@@ -40,17 +62,6 @@ export function SignIn() {
         )}
       </div>
     </div>
-  );
-}
-
-function GoogleG() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" style={{ background: '#fff', padding: '2px' }}>
-      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6.1C12.4 13.7 17.7 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z" />
-      <path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.8-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6.1z" />
-      <path fill="#34A853" d="M24 48c6.2 0 11.6-2 15.4-5.5l-7.6-5.9c-2.1 1.4-4.8 2.3-7.8 2.3-6.3 0-11.6-4.2-13.5-9.9l-7.8 6.1C6.6 42.6 14.6 48 24 48z" />
-    </svg>
   );
 }
 

@@ -56,12 +56,10 @@ The production project is `our-pixel-home` on Supabase. To set up a fresh one:
    (`supabase db push`, or paste them into the SQL editor).
 2. Deploy the function: `supabase functions deploy api --no-verify-jwt`
    (`supabase/config.toml` already sets `verify_jwt = false`; the function checks the token itself).
-3. **Google sign-in:** in Google Cloud Console create an OAuth client (Web application) with the
-   authorized redirect URI `https://<project-ref>.supabase.co/auth/v1/callback`. Then in
-   Supabase → Authentication → Sign In / Providers → Google, paste the client ID and secret and
-   enable it.
-4. In Supabase → Authentication → URL Configuration, set the **Site URL** to your Vercel URL and
-   add it (plus `http://localhost:5173` for local testing) to the **Redirect URLs**.
+3. **Sign-in is email and password.** In Supabase → Authentication → Sign In / Providers → Email,
+   turn **Confirm email** off. Supabase's built-in mailer only sends to members of your Supabase
+   team, so with confirmation on, your partner couldn't finish signing up. If you later add your
+   own SMTP sender (Authentication → Emails), you can turn confirmation back on.
 
 ## Deploying the app (Vercel)
 
@@ -73,7 +71,7 @@ Import the repo into Vercel (framework: Vite; `vercel.json` has the rest) and se
 | `VITE_SUPABASE_ANON_KEY` | the project's publishable key (`sb_publishable_…`) |
 
 Both are public by design: the publishable key only lets someone call the `api` function, which
-requires a signed-in Google account and enforces every rule. Copy `.env.example` to `.env.local`
+requires a signed-in account and enforces every rule. Copy `.env.example` to `.env.local`
 to use them locally.
 
 `api/passage.ts` is a small Vercel function that fetches one ESV chapter at a time from

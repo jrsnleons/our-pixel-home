@@ -64,7 +64,8 @@ export interface Passage { ref: string; verses: { n: number; text: string }[]; c
 export interface Backend {
   readonly mode: 'preview' | 'online';
   user(): Promise<AuthUser | null>;
-  signIn(): Promise<void>;
+  /** Email and password. `create` makes a new account. Throws ActionError with a message to show. */
+  signIn(email: string, password: string, create: boolean): Promise<void>;
   signOut(): Promise<void>;
   /** Everything for the home screen, or null when this account has no profile yet. */
   load(): Promise<Snapshot | null>;

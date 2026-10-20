@@ -53,7 +53,7 @@ export class LocalBackend implements Backend {
   private snap(): Snapshot { return clone(snapshotOf(this.s.world!, ME)); }
 
   async user() { return this.s.me ? { id: ME, name: this.s.me.name } : null; }
-  async signIn() { /* preview has no accounts */ }
+  async signIn(_email: string, _password: string, _create: boolean) { /* preview has no accounts */ }
   async signOut() { this.s = { me: null, world: null, photos: {} }; this.save(); this.stopSim(); }
 
   async load(): Promise<Snapshot | null> {
