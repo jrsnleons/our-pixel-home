@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { sfx, startMusic, stopMusic, musicPlaying, setMusicVolume } from '../../audio/audio';
 import { ITEM_BY_KEY } from '../../data/catalog';
 import { INTERACTION_BY_ID } from '../../data/interactions';
+import { isJob, JOBS, type JobKey } from '../../data/jobs';
 import { THEMES } from '../../data/themes';
 import type { Placement } from '../../core/grid';
 import { HomeScene, type ScreenPoint } from '../../engine/scene';
@@ -20,6 +21,7 @@ import { Notes, type NotesTab } from '../panels/Notes';
 import { Me } from '../panels/Me';
 import { Store } from '../panels/Store';
 import { Work } from '../panels/Work';
+import { deliverShiftMsg } from '../jobs/common';
 import { OutfitGift, Wardrobe } from '../panels/Wardrobe';
 import { GameSheet } from '../games/GameSheet';
 import { Celebrate, Feed, ItemSheet, Quests, SinceDate, todaysMilestone, type ItemSheetKind } from '../panels/Small';
@@ -38,7 +40,7 @@ export function Home() {
   const [bubble, setBubble] = useState<Bubble>(null);
   const [wheel, setWheel] = useState(false);
   const [game, setGame] = useState<{ id: string | null; kind: GameKind } | null>(null);
-  const [invite, setInvite] = useState<{ kind: GameKind | 'shift'; ref?: string } | null>(null);
+  const [invite, setInvite] = useState<{ kind: GameKind | 'shift'; ref?: string; job?: JobKey } | null>(null);
   const [notesTab, setNotesTab] = useState<NotesTab>('notebooks');
   const [itemSheet, setItemSheet] = useState<{ kind: ItemSheetKind; p: Placement } | null>(null);
   const [music, setMusic] = useState(musicPlaying());
@@ -157,9 +159,9 @@ export function Home() {
         case 'heart': scene.spawn('heart', 'partner', 3); sfx('heart'); toast(`${pName} is thinking of you`, 'love'); break;
         case 'lamp': if (scene.isLampOn(m.id) !== m.on) scene.toggleLamp(m.id); break;
         case 'music': if (m.on) { startMusic(m.track); setMusic(true); } else { stopMusic(); setMusic(false); } break;
-        case 'invite': setInvite({ kind: (m.what === 'shift' ? 'shift' : m.kind ?? 'connect4') as GameKind | 'shift', ref: m.ref }); sfx('bell'); break;
+        case 'invite': setInvite({ kind: (m.what === 'shift' ? 'shift' : m.kind ?? 'connect4') as GameKind | 'shift', ref: m.ref, job: isJob(m.job) ? m.job : 'cafe' }); sfx('bell'); break;
         case 'stroke': case 'clear': strokeHandler?.(m); break;
-        case 'cafe': cafeHandler?.(m); break;
+        case 'cafe': deliverShiftMsg(m); break;
         case 'decor': break;
       }
     };
@@ -284,12 +286,12 @@ export function Home() {
 
       {invite && (
         <div class="bubble" style={{ left: '50%', top: '30%', transform: 'translate(-50%, 0)', flexDirection: 'column', alignItems: 'stretch', maxWidth: '86%' }}>
-          <span class="small center">{partner.value?.name} wants to {invite.kind === 'shift' ? 'work a café shift together' : invite.kind === 'draw' ? 'play Draw & Guess' : `play ${invite.kind === 'connect4' ? 'Connect 4' : 'Tic-Tac-Toe'}`}</span>
+          <span class="small center">{partner.value?.name} wants to {invite.kind === 'shift' ? `work a ${JOBS[invite.job ?? 'cafe'].name.toLowerCase()} shift together` : invite.kind === 'draw' ? 'play Draw & Guess' : `play ${invite.kind === 'connect4' ? 'Connect 4' : 'Tic-Tac-Toe'}`}</span>
           <div class="row">
             <button class="btn ghost grow" onClick={() => setInvite(null)}>Later</button>
             <button class="btn grow" onClick={() => {
               const inv = invite; setInvite(null);
-              if (inv.kind === 'shift') { workJoin = inv.ref ?? null; sheet.value = 'work'; }
+              if (inv.kind === 'shift') { workJoin = inv.ref ? { id: inv.ref, job: inv.job ?? 'cafe' } : null; sheet.value = 'work'; }
               else setGame({ id: inv.ref ?? null, kind: inv.kind });
             }}>Join</button>
           </div>
@@ -330,14 +332,12 @@ export function Home() {
   );
 }
 
-// Live message hooks for sheets that need them (drawing, café).
+// Live message hooks for sheets that need them (drawing; jobs use src/ui/jobs/common.tsx).
 let liveHandler: ((m: LiveMsg) => void) | null = null;
 export function deliverLive(m: LiveMsg) { liveHandler?.(m); }
 let strokeHandler: ((m: LiveMsg) => void) | null = null;
 export function onStrokes(fn: ((m: LiveMsg) => void) | null) { strokeHandler = fn; }
-let cafeHandler: ((m: LiveMsg) => void) | null = null;
-export function onCafe(fn: ((m: LiveMsg) => void) | null) { cafeHandler = fn; }
-let workJoin: string | null = null;
+let workJoin: { id: string; job: JobKey } | null = null;
 function takeWorkJoin() { const j = workJoin; workJoin = null; return j; }
 
 /** Minutes ahead of UTC for a time zone right now. */

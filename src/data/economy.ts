@@ -16,27 +16,27 @@ export const REWARDS = {
   ],
 } as const;
 
-export const CAFE = {
+/** Pay and levels for every job on the Work board (src/data/jobs.ts). */
+export const SHIFT = {
   /** Base pay per shift before level bonus and diminishing returns. */
   soloPay: 30,
   togetherPayEach: 50,
   /** A shift is 3 minutes; the server refuses payouts for shifts shorter than this. */
   shiftSeconds: 180,
   minSeconds: 100,
-  /** Pay drops after this many shifts in a day (soft diminishing returns). */
+  /** Pay drops after this many shifts in a day, all jobs together (soft diminishing returns). */
   softCap: 10,
-  /** XP per served order; level = floor(sqrt(xp / 40)) + 1, capped at 10. */
-  xpPerOrder: 1,
+  /** Level = floor(sqrt(xp / 40)) + 1, capped at 10. XP per order is set per job. */
   maxLevel: 10,
   /** Each level adds 6% pay. */
   levelBonus: 0.06,
 } as const;
 
-export function cafeLevel(xp: number): number {
-  return Math.min(CAFE.maxLevel, Math.floor(Math.sqrt(Math.max(0, xp) / 40)) + 1);
+export function jobLevel(xp: number): number {
+  return Math.min(SHIFT.maxLevel, Math.floor(Math.sqrt(Math.max(0, xp) / 40)) + 1);
 }
 
-export function cafeXpForLevel(level: number): number {
+export function xpForLevel(level: number): number {
   return (level - 1) ** 2 * 40;
 }
 
@@ -44,13 +44,13 @@ export function cafeXpForLevel(level: number): number {
  * Coins for one shift. `quality` is served orders / orders that could have been served (0..1).
  * Runs on the server too, as part of the shared rules.
  */
-export function cafePayout(opts: { together: boolean; quality: number; level: number; shiftsToday: number }): number {
-  const base = opts.together ? CAFE.togetherPayEach : CAFE.soloPay;
+export function shiftPayout(opts: { together: boolean; quality: number; level: number; shiftsToday: number }): number {
+  const base = opts.together ? SHIFT.togetherPayEach : SHIFT.soloPay;
   const q = Math.max(0, Math.min(1, opts.quality));
   const performance = 0.4 + 0.6 * q;
-  const levelMult = 1 + CAFE.levelBonus * (opts.level - 1);
+  const levelMult = 1 + SHIFT.levelBonus * (opts.level - 1);
   const n = opts.shiftsToday; // shifts already paid today, before this one
-  const diminish = n < CAFE.softCap ? 1 : n < CAFE.softCap * 2 ? 0.5 : 0.25;
+  const diminish = n < SHIFT.softCap ? 1 : n < SHIFT.softCap * 2 ? 0.5 : 0.25;
   return Math.max(1, Math.round(base * performance * levelMult * diminish));
 }
 

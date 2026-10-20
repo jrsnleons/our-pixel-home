@@ -8,6 +8,7 @@ import type { Placement } from '../../core/grid';
 import { parseRef } from '../../data/bible';
 import { daysTogether, milestone, QUESTS, sinceFromDays } from '../../data/economy';
 import { INTERACTION_BY_ID } from '../../data/interactions';
+import { isJob, JOBS } from '../../data/jobs';
 import type { Passage } from '../../net/backend';
 import { dayIn } from '../../net/rules';
 import type { FeedEvent } from '../../net/types';
@@ -53,7 +54,7 @@ export function describe(e: FeedEvent): string {
     case 'answered': return `marked a prayer answered: “${p.text}”`;
     case 'devotion': return p.shared ? `did quiet time (${p.passage})` : 'did quiet time';
     case 'game': return `finished a game${p.winner === e.actor ? ' and won' : ''}`;
-    case 'shift': return `worked a café shift (+${p.pay})`;
+    case 'shift': return `worked ${p.together ? 'a shift together' : 'a shift'} at ${JOBS[isJob(p.job) ? p.job : 'cafe'].place} (+${p.pay})`;
     case 'quest': return 'finished a starter quest';
     case 'decor': return 'redecorated';
     case 'joined': return 'moved in';

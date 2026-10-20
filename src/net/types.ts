@@ -3,6 +3,7 @@
 
 import type { Placement, Surface } from '../core/grid';
 import type { Wear } from '../data/clothes';
+import type { JobKey } from '../data/jobs';
 import type { AvatarLook } from '../engine/art/avatar';
 import type { SettleState, InteractionPlay } from '../engine/scene';
 import type { Tile } from '../core/grid';
@@ -24,6 +25,8 @@ export interface Profile {
   saved?: (Wear | null)[];
   /** An outfit the partner picked, waiting for a yes or a "maybe later". */
   gift?: { wear: Wear; from: string; at: string } | null;
+  /** Shifts finished at each job; the next job opens after a few of the last. */
+  jobs?: Partial<Record<JobKey, number>>;
 }
 
 export interface RoomStyleRow {
@@ -45,6 +48,8 @@ export interface Couple {
   slots: number;
   style: RoomStyleRow;
   cafeXp: number;
+  /** Experience at the other jobs (the café keeps cafeXp). */
+  jobXp?: Partial<Record<JobKey, number>>;
   archivedAt: string | null;
 }
 
@@ -117,6 +122,8 @@ export interface Game {
 
 export interface Shift {
   id: string;
+  /** Older shifts have no job: they were café shifts. */
+  job?: JobKey;
   together: boolean;
   startedBy: string;
   startedAt: string;
@@ -157,13 +164,18 @@ export type LiveMsg =
   | { t: 'stroke'; game: string; pts: number[]; color: string; size: number }
   | { t: 'clear'; game: string }
   | { t: 'cafe'; shift: string; ev: CafeEvent }
-  | { t: 'invite'; what: 'play' | 'shift' | 'draw'; ref?: string; kind?: GameKind; at?: string }
+  | { t: 'invite'; what: 'play' | 'shift' | 'draw'; ref?: string; kind?: GameKind; job?: JobKey; at?: string }
   | { t: 'decor'; placing: { item: string; surface: Surface; x: number; y: number; rot: number } | null };
 
 export type CafeEvent =
   | { k: 'order'; id: number; drink: string; seat: number }
   | { k: 'ready'; id: number }
   | { k: 'served'; id: number; ok: boolean }
-  | { k: 'end'; served: number; missed: number };
+  | { k: 'end'; served: number; missed: number }
+  // Flower shop: the florist sends the stems for an order; the wrapper finishes it.
+  | { k: 'bouquet'; id: number; flowers: string[]; wrap: number; ribbon: number; seat: number }
+  | { k: 'stems'; id: number; flowers: string[] }
+  // Delivery: where the other bike is, and their streak for the shared combo.
+  | { k: 'ride'; lane: number; crash?: boolean; streak: number };
 
 export interface Presence { userId: string; online: boolean; at: string }

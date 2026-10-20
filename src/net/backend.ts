@@ -3,6 +3,7 @@
 
 import type { Surface } from '../core/grid';
 import type { Wear } from '../data/clothes';
+import type { JobKey } from '../data/jobs';
 import type { AvatarLook } from '../engine/art/avatar';
 import type { GameKind, LiveMsg, Patch, Profile, QuestKey, RoomStyleRow, Snapshot } from './types';
 
@@ -42,7 +43,7 @@ export interface Rpcs {
   draw_word: { gameId: string };
   draw_guess: { gameId: string; guess: string };
   draw_skip: { gameId: string };
-  shift_start: { together: boolean };
+  shift_start: { together: boolean; job?: JobKey };
   shift_finish: { shiftId: string; served: number; missed: number };
   unpair: Record<string, never>;
   restore: Record<string, never>;
