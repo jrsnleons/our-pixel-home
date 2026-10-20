@@ -4,16 +4,17 @@
 import { useSignalEffect } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import { setSfx } from '../audio/audio';
-import { backend, coupleId, markFeedSeen, merge, partnerLastSeen, partnerOnline, phase, prefs, route, snap, suggestedName, toasts } from '../state/store';
+import { backend, coupleId, markFeedSeen, merge, partnerLastSeen, partnerOnline, phase, prefs, route, setPrefs, snap, suggestedName, toasts } from '../state/store';
 import { Icon } from './kit';
 import { Home, deliverLive } from './screens/Home';
-import { Boot, MakeProfile, Pair, SignIn } from './screens/Onboarding';
+import { Boot, Intro, MakeProfile, Pair, SignIn } from './screens/Onboarding';
 import { applyTheme } from './theme';
 
 export function App() {
   const [entered, setEntered] = useState(false);
 
   useSignalEffect(() => { applyTheme(prefs.value.theme); });
+  useSignalEffect(() => { document.documentElement.classList.toggle('easy-read', prefs.value.easyRead); });
   useEffect(() => { setSfx(prefs.value.sfx); }, []);
 
   // Work out where to start.
@@ -37,7 +38,7 @@ export function App() {
   return (
     <div class="stage">
       {p === 'boot' || !entered ? <Boot onEnter={() => setEntered(true)} />
-        : p === 'signin' ? <SignIn />
+        : p === 'signin' ? (prefs.value.hints.intro ? <SignIn /> : <Intro onDone={() => setPrefs({ hints: { ...prefs.value.hints, intro: true } })} />)
         : p === 'profile' ? <MakeProfile suggested={suggestedName.value} />
         : p === 'pair' ? <Pair onDone={() => { markFeedSeen(); phase.value = 'home'; }} />
         : p === 'archived' ? <Archived />

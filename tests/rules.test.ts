@@ -149,3 +149,29 @@ describe('café', () => {
     expect(() => R.shiftFinish(ana(new Date(t.getTime() + 190_000)), s.id, 20, 2)).toThrow();
   });
 });
+
+describe('looks and milestones', () => {
+  it('keeps body and face options and fills them in for older looks', () => {
+    const old = { skin: 2, hair: 'bob', hairColor: 1, outfit: 'fit_tee', accessory: 'acc_none', eyes: 0 } as unknown as Parameters<typeof R.cleanLook>[0];
+    expect(R.cleanLook(old)).toMatchObject({ body: 'guy', freckles: false, blush: false });
+    expect(R.cleanLook({ ...DEFAULT_LOOK, body: 'girl', freckles: true, blush: true, hair: 'twintails' })).toMatchObject({ body: 'girl', freckles: true, blush: true, hair: 'twintails' });
+    expect(R.cleanLook({ ...DEFAULT_LOOK, body: 'robot' as 'guy' }).body).toBe('guy');
+  });
+  it('pays a monthsary gift once for the couple, whoever opens first', () => {
+    const { w, ana, ben } = setup();
+    R.setCouple(ana(), { since: '2026-09-19' });
+    const before = w.couple.coins;
+    const a = R.claimDaily(ana(new Date('2026-10-19T03:00:00Z')), false);
+    expect(a.lines).toContain('1 month together! +40');
+    // London is still on the 18th here; when its 19th arrives, the gift is already claimed.
+    R.claimDaily(ben(new Date('2026-10-19T12:00:00Z')), false);
+    expect(w.ledger.filter((l) => l.reason.startsWith('milestone_'))).toHaveLength(1);
+    expect(w.events.filter((e) => e.kind === 'milestone')).toHaveLength(1);
+    expect(w.couple.coins - before).toBeGreaterThanOrEqual(40);
+  });
+  it('remembers the finished tour on the profile', () => {
+    const { w, ana } = setup();
+    R.setProfile(ana(), { tourDone: true });
+    expect(w.profiles.ana.tourDone).toBe(true);
+  });
+});

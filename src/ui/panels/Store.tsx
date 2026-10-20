@@ -73,7 +73,7 @@ function Detail({ def, onBack, onClose, owned }: { def: ItemDef; onBack: () => v
       <div class="detail">
         <div class="thumb pbox soft">{thumb(def.key, theme) ? <img src={thumb(def.key, theme)} alt="" /> : <Icon name="sparkle" size="l" />}</div>
         <div class="col" style={{ gap: '6px' }}>
-          <p style={{ margin: 0, fontFamily: 'system-ui, sans-serif', fontSize: '15px', lineHeight: 1.35 }}>{def.blurb}</p>
+          <p style={{ margin: 0, fontFamily: 'var(--read-font), system-ui, sans-serif', fontSize: '15px', lineHeight: 1.35 }}>{def.blurb}</p>
           {size && <span class="tiny muted">{size}{def.flat ? ', goes under furniture' : ''}</span>}
           {def.tier != null && def.kind !== 'style' && <span class="tiny muted">{TIER[def.tier]} tier</span>}
           {unlocks.length > 0 && <span class="chip"><Icon name="sparkle" size="s" />Unlocks {unlocks.join(', ')}</span>}

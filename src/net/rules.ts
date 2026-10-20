@@ -5,7 +5,7 @@
 import { applyMove, emptyBoard, outcome, type GameKind as BoardKind } from '../core/boardgames';
 import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '../core/grid';
 import { ITEM_BY_KEY, SLOT_UPGRADE, STARTER_COINS, STARTER_PLACEMENTS, STARTER_SLOTS, type ItemDef } from '../data/catalog';
-import { CAFE, DAILY_LIMITS, QUESTS, REWARDS, cafeLevel, cafePayout } from '../data/economy';
+import { CAFE, DAILY_LIMITS, QUESTS, REWARDS, cafeLevel, cafePayout, milestone } from '../data/economy';
 import { INTERACTION_BY_ID } from '../data/interactions';
 import { DRAW_ROUNDS, DRAW_WORDS, normalizeGuess } from '../data/words';
 import type { AvatarLook } from '../engine/art/avatar';
@@ -209,7 +209,7 @@ export function setStyle(c: Ctx, style: RoomStyleRow) {
   event(c, 'decor', {});
 }
 
-export function setProfile(c: Ctx, patch: { name?: string; city?: string | null; tz?: string }) {
+export function setProfile(c: Ctx, patch: { name?: string; city?: string | null; tz?: string; tourDone?: boolean }) {
   const me = c.w.profiles[c.me];
   if (patch.name !== undefined) {
     const n = patch.name.trim().slice(0, 24);
@@ -221,6 +221,7 @@ export function setProfile(c: Ctx, patch: { name?: string; city?: string | null;
     if (!validTz(patch.tz)) throw new RuleError('That time zone isn’t right.');
     me.tz = patch.tz;
   }
+  if (patch.tourDone === true) me.tourDone = true;
 }
 
 export function validTz(tz: string): boolean {
@@ -238,7 +239,11 @@ export function cleanLook(look: AvatarLook): AvatarLook {
   const n = (v: unknown, max: number) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= max ? (v as number) : 0);
   const k = (v: unknown, fallback: string) => (typeof v === 'string' && /^[a-z0-9_]{1,24}$/.test(v) ? v : fallback);
   if (!look || typeof look !== 'object') throw new RuleError('Pick a look first.');
-  return { skin: n(look.skin, 9), hair: k(look.hair, 'short'), hairColor: n(look.hairColor, 15), outfit: k(look.outfit, 'fit_tee'), accessory: k(look.accessory, 'acc_none'), eyes: n(look.eyes, 9) };
+  return {
+    body: look.body === 'girl' ? 'girl' : 'guy',
+    skin: n(look.skin, 9), hair: k(look.hair, 'short'), hairColor: n(look.hairColor, 15), outfit: k(look.outfit, 'fit_tee'), accessory: k(look.accessory, 'acc_none'), eyes: n(look.eyes, 9),
+    freckles: look.freckles === true, blush: look.blush === true,
+  };
 }
 
 const ALLOWED_DATA = ['photo', 'pixelate', 'verse', 'caption', 'takenAt'];
@@ -279,6 +284,15 @@ export function claimDaily(c: Ctx, partnerOnline: boolean): { coins: number; lin
         lines.push(`${s.days}-day streak +${s.coins}`);
       }
     }
+  }
+  // Anniversaries, hundredth days and monthsaries pay once for the two of you, whoever opens first.
+  const ms = c.w.couple.b ? milestone(c.w.couple.since, day) : null;
+  const msKey = `milestone_${day}`;
+  if (ms && !c.w.ledger.some((l) => l.reason === msKey)) {
+    const got = award(c, msKey, ms.coins);
+    coins += got;
+    lines.push(`${ms.label}! +${got}`);
+    event(c, 'milestone', { label: ms.label });
   }
   if (partnerOnline) {
     const b = award(c, 'both_online', REWARDS.bothOnline.coins);

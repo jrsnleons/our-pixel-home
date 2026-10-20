@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cafeLevel, cafePayout, daysTogether } from '../src/data/economy';
+import { cafeLevel, cafePayout, daysTogether, milestone, sinceFromDays } from '../src/data/economy';
 
 describe('economy', () => {
   it('pays about 30 solo and 50 each together for a good shift', () => {
@@ -20,5 +20,22 @@ describe('economy', () => {
   it('counts days together from day 1', () => {
     expect(daysTogether('2026-10-19', new Date(2026, 9, 19))).toBe(1);
     expect(daysTogether('2026-01-01', new Date(2026, 0, 31))).toBe(31);
+  });
+});
+
+describe('days together', () => {
+  it('turns a day count into a start date (day 1 is the start)', () => {
+    expect(sinceFromDays(1, '2026-10-20')).toBe('2026-10-20');
+    expect(sinceFromDays(412, '2026-10-20')).toBe('2025-09-04');
+    expect(daysTogether(sinceFromDays(412, '2026-10-20'), new Date(2026, 9, 20, 12))).toBe(412);
+  });
+  it('celebrates monthsaries, hundredth days and anniversaries', () => {
+    expect(milestone('2026-01-15', '2026-02-15')).toEqual({ label: '1 month together', coins: 40 });
+    expect(milestone('2026-01-15', '2026-02-16')).toBeNull();
+    expect(milestone('2026-01-31', '2026-02-28')?.label).toBe('1 month together');
+    expect(milestone('2026-01-01', '2026-04-10')).toEqual({ label: 'Day 100 together', coins: 100 });
+    expect(milestone('2025-03-09', '2026-03-09')).toEqual({ label: '1 year together', coins: 300 });
+    expect(milestone('2025-03-09', '2025-03-09')).toBeNull();
+    expect(milestone(null, '2026-03-09')).toBeNull();
   });
 });

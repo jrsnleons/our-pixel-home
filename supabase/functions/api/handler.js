@@ -176,6 +176,23 @@ function daysTogether(since, today2 = /* @__PURE__ */ new Date()) {
   const now = Date.UTC(today2.getFullYear(), today2.getMonth(), today2.getDate());
   return Math.max(1, Math.floor((now - start) / 864e5) + 1);
 }
+var dayMs = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+function milestone(since, day) {
+  if (!since || day <= since) return null;
+  const n = Math.round((dayMs(day) - dayMs(since)) / 864e5) + 1;
+  const [sy, sm, sd] = since.split("-").map(Number);
+  const [y, m, d] = day.split("-").map(Number);
+  const monthEnd = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const months = (y - sy) * 12 + (m - sm);
+  const sameDate = months > 0 && d === Math.min(sd, monthEnd);
+  if (sameDate && months % 12 === 0) {
+    const yrs = months / 12;
+    return { label: `${yrs} year${yrs === 1 ? "" : "s"} together`, coins: 300 };
+  }
+  if (n % 100 === 0) return { label: `Day ${n} together`, coins: 100 };
+  if (sameDate) return { label: `${months} month${months === 1 ? "" : "s"} together`, coins: 40 };
+  return null;
+}
 var QUESTS = [
   { key: "buy_bed", label: "Buy a real bed", hint: "Store \u2192 Furniture", coins: 60 },
   { key: "place_table", label: "Place a table", hint: "Decorate \u2192 your storage box", coins: 40 },
@@ -660,6 +677,7 @@ function setProfile(c, patch) {
     if (!validTz(patch.tz)) throw new RuleError("That time zone isn\u2019t right.");
     me.tz = patch.tz;
   }
+  if (patch.tourDone === true) me.tourDone = true;
 }
 function validTz(tz) {
   try {
@@ -678,7 +696,17 @@ function cleanLook(look) {
   const n = (v, max) => Number.isInteger(v) && v >= 0 && v <= max ? v : 0;
   const k = (v, fallback) => typeof v === "string" && /^[a-z0-9_]{1,24}$/.test(v) ? v : fallback;
   if (!look || typeof look !== "object") throw new RuleError("Pick a look first.");
-  return { skin: n(look.skin, 9), hair: k(look.hair, "short"), hairColor: n(look.hairColor, 15), outfit: k(look.outfit, "fit_tee"), accessory: k(look.accessory, "acc_none"), eyes: n(look.eyes, 9) };
+  return {
+    body: look.body === "girl" ? "girl" : "guy",
+    skin: n(look.skin, 9),
+    hair: k(look.hair, "short"),
+    hairColor: n(look.hairColor, 15),
+    outfit: k(look.outfit, "fit_tee"),
+    accessory: k(look.accessory, "acc_none"),
+    eyes: n(look.eyes, 9),
+    freckles: look.freckles === true,
+    blush: look.blush === true
+  };
 }
 var ALLOWED_DATA = ["photo", "pixelate", "verse", "caption", "takenAt"];
 function setPlacementData(c, pid, patch) {
@@ -715,6 +743,14 @@ function claimDaily(c, partnerOnline) {
         lines.push(`${s.days}-day streak +${s.coins}`);
       }
     }
+  }
+  const ms = c.w.couple.b ? milestone(c.w.couple.since, day) : null;
+  const msKey = `milestone_${day}`;
+  if (ms && !c.w.ledger.some((l) => l.reason === msKey)) {
+    const got = award(c, msKey, ms.coins);
+    coins += got;
+    lines.push(`${ms.label}! +${got}`);
+    event(c, "milestone", { label: ms.label });
   }
   if (partnerOnline) {
     const b = award(c, "both_online", REWARDS.bothOnline.coins);

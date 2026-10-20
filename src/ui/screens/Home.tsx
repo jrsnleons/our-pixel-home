@@ -10,9 +10,10 @@ import type { Placement } from '../../core/grid';
 import { HomeScene, type ScreenPoint } from '../../engine/scene';
 import type { LocalBackend } from '../../net/local';
 import type { GameKind, LiveMsg } from '../../net/types';
-import { act, backend, coins, couple, day, markFeedSeen, partner, partnerLastSeen, partnerOnline, prefs, sheet, snap, toast, unseen, type Sheet } from '../../state/store';
+import { act, backend, coins, couple, day, markFeedSeen, partner, partnerLastSeen, partnerOnline, prefs, sheet, snap, toast, tourReplay, unseen, type Sheet } from '../../state/store';
 import { Coin, Icon } from '../kit';
 import { FurnitureBubble, MeBubble, PartnerBubble } from '../overlays/Bubbles';
+import { Tour } from '../overlays/Tour';
 import { InteractionWheel } from '../overlays/Wheel';
 import { Decorate } from '../panels/Decorate';
 import { Notes, type NotesTab } from '../panels/Notes';
@@ -20,7 +21,7 @@ import { Me } from '../panels/Me';
 import { Store } from '../panels/Store';
 import { Work } from '../panels/Work';
 import { GameSheet } from '../games/GameSheet';
-import { Feed, ItemSheet, Quests, SinceDate, type ItemSheetKind } from '../panels/Small';
+import { Celebrate, Feed, ItemSheet, Quests, SinceDate, todaysMilestone, type ItemSheetKind } from '../panels/Small';
 
 export let sceneRef: HomeScene | null = null;
 
@@ -41,6 +42,9 @@ export function Home() {
   const [itemSheet, setItemSheet] = useState<{ kind: ItemSheetKind; p: Placement } | null>(null);
   const [music, setMusic] = useState(musicPlaying());
   const [feedOpen, setFeedOpen] = useState(false);
+  const [sinceLater, setSinceLater] = useState(false);
+  const [celebrate, setCelebrate] = useState<{ label: string; day: string } | null>(null);
+  const [tourDoneHere, setTourDoneHere] = useState(() => { try { return localStorage.getItem('oph.tour') === '1'; } catch { return false; } });
 
   // ---------- create the scene ----------
   useEffect(() => {
@@ -168,6 +172,19 @@ export function Home() {
     return () => { clearTimeout(t0); clearInterval(t1); };
   }, []);
 
+  // Monthsary, hundredth day or anniversary: a celebration once per day.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const ms = todaysMilestone();
+      if (!ms) return;
+      setCelebrate(ms);
+      sfx('win');
+      sceneRef?.spawn('heart', 'me', 4);
+      if (snap.value?.partner) sceneRef?.spawn('heart', 'partner', 4);
+    }, 2600);
+    return () => clearTimeout(t);
+  }, []);
+
   // "While you were away" once per load.
   useEffect(() => {
     const t = setTimeout(() => { if (unseen.value.length) setFeedOpen(true); }, 900);
@@ -189,6 +206,16 @@ export function Home() {
 
   const s = snap.value!;
   const unseenCount = unseen.value.length;
+  // First visit: the together-since step (once you're paired), then the tour. Nothing else open.
+  const askSince = !!s.couple?.b && !s.couple.since && !sinceLater && !sheet.value;
+  const showTour = !!scene && !sheet.value && !askSince && !celebrate && !feedOpen && !game
+    && (tourReplay.value || (!s.me.tourDone && !tourDoneHere));
+  const finishTour = () => {
+    tourReplay.value = false;
+    setTourDoneHere(true);
+    try { localStorage.setItem('oph.tour', '1'); } catch { /* ignore */ }
+    if (!s.me.tourDone && s.couple) void act('set_profile', { tourDone: true }, { quiet: true });
+  };
   const questsLeft = s.quests.filter((q) => q.done && !q.claimed).length;
   const pOnline = partnerOnline.value;
 
@@ -202,7 +229,7 @@ export function Home() {
             <Icon name="heart" size="s" />
             <span><b>Day {day.value}</b><span class="sub">together</span></span>
           </button>
-          <button class="pill" onClick={() => open('store')} aria-label="Coins">
+          <button class="pill" onClick={() => open('store')} aria-label="Coins" data-tour="coins">
             <Coin n={coins.value.toLocaleString()} />
           </button>
           <div class="grow" />
@@ -277,12 +304,14 @@ export function Home() {
       {feedOpen && <Feed onClose={() => { markFeedSeen(); setFeedOpen(false); }} />}
       {game && <GameSheet gameId={game.id} kind={game.kind} onClose={() => setGame(null)} />}
       {itemSheet && <ItemSheet kind={itemSheet.kind} p={itemSheet.p} onClose={() => setItemSheet(null)} />}
-      {s.couple?.b && !s.couple.since && !sheet.value && <SinceDate />}
+      {askSince && <SinceDate onDone={() => setSinceLater(true)} />}
+      {celebrate && <Celebrate label={celebrate.label} day={celebrate.day} onClose={() => setCelebrate(null)} />}
+      {showTour && scene && <Tour scene={scene} onDone={finishTour} />}
 
       {sheet.value !== 'decorate' && (
         <nav class="bottombar">
           {([['store', 'store', 'Store'], ['work', 'work', 'Work'], ['decorate', 'decorate', 'Decorate'], ['notes', 'notes', 'Notes'], ['me', 'me', 'Me']] as const).map(([k, icon, label]) => (
-            <button class="navbtn" aria-pressed={sheet.value === k} onClick={() => open(k)}>
+            <button class="navbtn" aria-pressed={sheet.value === k} onClick={() => open(k)} data-tour={k}>
               <Icon name={icon} />
               <span>{label}</span>
             </button>

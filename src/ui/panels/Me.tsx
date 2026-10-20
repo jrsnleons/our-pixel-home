@@ -5,7 +5,7 @@ import { setSfx, sfx } from '../../audio/audio';
 import { ESV_NOTICE } from '../../data/bible';
 import { THEME_ORDER, THEMES } from '../../data/themes';
 import type { AvatarLook } from '../../engine/art/avatar';
-import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, snap, toast } from '../../state/store';
+import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, sheet, snap, toast, tourReplay } from '../../state/store';
 import { AvatarEditor } from '../AvatarEditor';
 import { Field, Icon, Sheet, Tabs } from '../kit';
 import { sceneRef } from '../screens/Home';
@@ -87,7 +87,7 @@ function Settings() {
                 {[T.ui.bg, T.wall.tint, T.ui.accent, T.blanket, T.mood.backdrop].map((c) => <i style={{ flex: 1, background: c }} />)}
               </div>
               <span style={{ fontSize: `${T.fontScale}em` }}>{T.name}</span>
-              <span class="tiny" style={{ opacity: 0.75, fontFamily: 'system-ui', lineHeight: 1.2 }}>{T.blurb}</span>
+              <span class="tiny" style={{ opacity: 0.75, fontFamily: 'var(--read-font), system-ui', lineHeight: 1.2 }}>{T.blurb}</span>
             </button>
           );
         })}
@@ -95,9 +95,11 @@ function Settings() {
       <div class="hr" />
       <Toggle label="HD-2D effects" hint="Glow, depth blur and color. Turn off on older phones." on={p.effects} set={(v) => setPrefs({ effects: v })} />
       <Toggle label="Battery saver" hint="Runs the room at 30 frames a second." on={p.battery} set={(v) => setPrefs({ battery: v })} />
+      <Toggle label="Easy-read text" hint="Notes, prayers and Bible passages in your phone’s normal font." on={p.easyRead} set={(v) => setPrefs({ easyRead: v })} />
       <Toggle label="Sound effects" on={p.sfx} set={(v) => { setPrefs({ sfx: v }); setSfx(v); }} />
       <label class="field"><span>Music volume</span><input type="range" min={0} max={1} step={0.05} value={p.music} onInput={(e) => setPrefs({ music: Number(e.currentTarget.value) })} /></label>
       <button class="btn soft small" onClick={() => { sceneRef?.r.resetQuality(); toast('Graphics reset to the best your phone can do.'); }}>Reset graphics quality</button>
+      <button class="btn soft small" onClick={() => { sfx('tap'); sheet.value = null; tourReplay.value = true; }}>Show the quick tour again</button>
       {backend.mode === 'preview' && backend.setPartnerOnline && (
         <Toggle label="Preview: Sam is online" hint="Turn off to see Sam asleep." on={partnerOnline.value} set={(v) => backend.setPartnerOnline!(v)} />
       )}

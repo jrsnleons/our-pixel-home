@@ -17,6 +17,8 @@ export interface Profile {
   /** Consecutive days visited (daily visit reward). */
   visitStreak: number;
   devotionStreak: number;
+  /** Finished or skipped the guided tour of the home screen (so a new phone doesn't repeat it). */
+  tourDone?: boolean;
 }
 
 export interface RoomStyleRow {
@@ -72,7 +74,7 @@ export interface Devotion {
   createdAt: string;
 }
 
-export type EventKind = 'heart' | 'interaction' | 'nudge' | 'buy' | 'note' | 'prayer' | 'prayed' | 'answered' | 'devotion' | 'game' | 'shift' | 'quest' | 'reward' | 'decor' | 'joined';
+export type EventKind = 'heart' | 'interaction' | 'nudge' | 'buy' | 'note' | 'prayer' | 'prayed' | 'answered' | 'devotion' | 'game' | 'shift' | 'quest' | 'reward' | 'decor' | 'joined' | 'milestone';
 
 export interface FeedEvent {
   id: string;
