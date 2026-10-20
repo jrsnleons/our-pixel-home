@@ -27,6 +27,8 @@ export interface Profile {
   gift?: { wear: Wear; from: string; at: string } | null;
   /** Shifts finished at each job; the next job opens after a few of the last. */
   jobs?: Partial<Record<JobKey, number>>;
+  /** Unlocked the hidden test mode (everything owned, every job open). */
+  god?: boolean;
 }
 
 export interface RoomStyleRow {

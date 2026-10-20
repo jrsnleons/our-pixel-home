@@ -101,7 +101,7 @@ export class LocalBackend implements Backend {
     if (!this.s.world) throw new ActionError('Pair up first.');
     let out: { result?: unknown; coins: number };
     try {
-      out = dispatch(this.ctx(), name, args, { partnerOnline: this.partnerOnline && !!this.s.world.couple.b });
+      out = dispatch(this.ctx(), name, args, { partnerOnline: this.partnerOnline && !!this.s.world.couple.b, godCheck: () => true });
       R.compact(this.s.world, new Date());
     } catch (e) {
       if (e instanceof R.RuleError) throw new ActionError(e.message);
