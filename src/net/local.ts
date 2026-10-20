@@ -70,7 +70,7 @@ export class LocalBackend implements Backend {
   }
 
   private sam(): Profile {
-    return { id: SAM, name: 'Sam', look: { ...DEFAULT_LOOK, hair: 'long', hairColor: 3, skin: 2, outfit: 'fit_sweater', accessory: 'acc_flower', eyes: 1 }, city: 'London', tz: 'Europe/London', lastSeen: new Date().toISOString(), visitStreak: 3, devotionStreak: 5 };
+    return { id: SAM, name: 'Sam', look: { ...DEFAULT_LOOK, body: 'girl', hair: 'long', hairColor: 3, skin: 2, outfit: 'fit_sweater', accessory: 'acc_flower', eyes: 1, blush: true }, city: 'London', tz: 'Europe/London', lastSeen: new Date().toISOString(), visitStreak: 3, devotionStreak: 5 };
   }
 
   async createCouple(): Promise<Snapshot> {
@@ -81,7 +81,6 @@ export class LocalBackend implements Backend {
     window.setTimeout(() => {
       if (!this.s.world || this.s.world.couple.b) return;
       R.joinCouple(this.ctx(), this.sam());
-      this.s.world!.couple.since = this.s.world!.couple.since ?? new Date(Date.now() - 41 * 86_400_000).toISOString().slice(0, 10);
       this.save();
       this.h?.patch(this.snap());
       this.h?.presence(true, new Date().toISOString());

@@ -63,6 +63,31 @@ export function daysTogether(since: string | null, today: Date = new Date()): nu
   return Math.max(1, Math.floor((now - start) / 86_400_000) + 1);
 }
 
+const dayMs = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+
+/** The together-since date for "we've been together n days" as of `today` (day 1 is the start). */
+export function sinceFromDays(n: number, today: string): string {
+  return new Date(dayMs(today) - (Math.max(1, Math.floor(n)) - 1) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * What `day` celebrates, if anything: a yearly anniversary, every hundredth day, or a monthsary
+ * (the same date each month, or the month's last day when it's shorter). Dates are YYYY-MM-DD.
+ */
+export function milestone(since: string | null, day: string): { label: string; coins: number } | null {
+  if (!since || day <= since) return null;
+  const n = Math.round((dayMs(day) - dayMs(since)) / 86_400_000) + 1;
+  const [sy, sm, sd] = since.split('-').map(Number);
+  const [y, m, d] = day.split('-').map(Number);
+  const monthEnd = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const months = (y - sy) * 12 + (m - sm);
+  const sameDate = months > 0 && d === Math.min(sd, monthEnd);
+  if (sameDate && months % 12 === 0) { const yrs = months / 12; return { label: `${yrs} year${yrs === 1 ? '' : 's'} together`, coins: 300 }; }
+  if (n % 100 === 0) return { label: `Day ${n} together`, coins: 100 };
+  if (sameDate) return { label: `${months} month${months === 1 ? '' : 's'} together`, coins: 40 };
+  return null;
+}
+
 /** "First week together" starter quests. Each pays into the shared wallet once. */
 export const QUESTS = [
   { key: 'buy_bed', label: 'Buy a real bed', hint: 'Store → Furniture', coins: 60 },

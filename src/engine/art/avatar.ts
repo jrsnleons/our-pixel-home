@@ -11,23 +11,38 @@ import { canvas, outline, px, texture, type Ctx } from './pixel';
 
 export const FW = 20, FH = 26;
 
+export type Body = 'guy' | 'girl';
+
 export interface AvatarLook {
+  /** Build: broader and straighter, or narrower shoulders with lashes. Older looks have none (guy). */
+  body: Body;
   skin: number;
   hair: string;
   hairColor: number;
   outfit: string;
   accessory: string;
   eyes: number;
+  freckles: boolean;
+  /** Rosy cheeks all the time, not just when happy. */
+  blush: boolean;
 }
 
-export const DEFAULT_LOOK: AvatarLook = { skin: 1, hair: 'short', hairColor: 1, outfit: 'fit_tee', accessory: 'acc_none', eyes: 0 };
+export const DEFAULT_LOOK: AvatarLook = { body: 'guy', skin: 1, hair: 'short', hairColor: 1, outfit: 'fit_tee', accessory: 'acc_none', eyes: 0, freckles: false, blush: false };
 
 export const SKINS = ['#FBE3CC', '#F3C9A2', '#E2AC7E', '#C78B5C', '#9C6642', '#6F4631'];
 export const HAIR_COLORS = ['#2B2026', '#4A2E1F', '#7A4A2E', '#A4512E', '#D9A949', '#B8B2AA', '#E890A8', '#8E7AD0'];
 export const HAIR_COLOR_NAMES = ['Black', 'Dark brown', 'Brown', 'Auburn', 'Blonde', 'Silver', 'Pink', 'Lavender'];
 export const EYE_COLORS = ['#2A1A1A', '#3A5A8A', '#3E6A3A', '#6A3E22'];
-export const HAIR_STYLES = ['short', 'bob', 'long', 'ponytail', 'buzz', 'curly', 'bun', 'wavy'] as const;
-export const HAIR_NAMES: Record<string, string> = { short: 'Messy short', bob: 'Bob', long: 'Long', ponytail: 'Ponytail', buzz: 'Crop', curly: 'Curly', bun: 'Top bun', wavy: 'Side-swept' };
+export const HAIR_STYLES = ['short', 'bob', 'long', 'ponytail', 'buzz', 'curly', 'bun', 'wavy', 'twintails', 'braid', 'afro', 'slick'] as const;
+export const HAIR_NAMES: Record<string, string> = {
+  short: 'Messy short', bob: 'Bob', long: 'Long', ponytail: 'Ponytail', buzz: 'Crop', curly: 'Curly', bun: 'Top bun', wavy: 'Side-swept',
+  twintails: 'Twin tails', braid: 'Braid', afro: 'Afro', slick: 'Slicked back',
+};
+/** Every style works on both bodies; these orders just put the usual picks first. */
+export const HAIR_ORDER: Record<Body, readonly string[]> = {
+  guy: ['short', 'slick', 'buzz', 'curly', 'afro', 'wavy', 'bob', 'long', 'ponytail', 'bun', 'braid', 'twintails'],
+  girl: ['long', 'bob', 'ponytail', 'twintails', 'braid', 'bun', 'wavy', 'curly', 'afro', 'short', 'slick', 'buzz'],
+};
 
 type Expr = 'normal' | 'happy' | 'closed' | 'blush' | 'surprised' | 'kiss' | 'laugh';
 type Legs = 'stand' | 'stepA' | 'stepB' | 'sit';
@@ -346,6 +361,151 @@ const HAIR: Record<string, HairStyle> = {
       '.....ddhhhhhhddd....',
     ],
   },
+  // r = ribbon ties.
+  twintails: {
+    front: [
+      '......hhhhhhh.......',
+      '....hhhhhhhhhhh.....',
+      '...hhHHHhhhhhhhh....',
+      '..hhHHhhhhhhhhhhd...',
+      '.rrhhhhhhhhhhhhhdrr.',
+      'hhhhhhhhhhhhhhhhdhhh',
+      'hhh.hhhhdhhhhdhhhdhh',
+      'hhh.hh..h.....hhhdhh',
+      'hHh.h..........hhdhh',
+      'dhh............hd.hh',
+      'dhh...............Hh',
+      '.hh...............hd',
+      '.dh...............hd',
+      '..d...............d.',
+    ],
+    back: [
+      '......hhhhhhhh......',
+      '....hhhhhhhhhhhh....',
+      '...hhHHHhhhhhhhhh...',
+      '..hhHHhhhhhhhhhhhd..',
+      'rrhhhhhhhhhhhhhhhdrr',
+      'hhhhhhhhhhhhhhhhhdhh',
+      'hhhhhhhhhdhhhhhhhdhh',
+      'hhhhhhhhhdhhhhhhhdhh',
+      'hHh.hhhhhhhhhhhhd.hh',
+      'hhh..dhhhhhhhhdd..Hh',
+      'dhh...dddddddd....hd',
+      '.hh...............hd',
+      '.dh...............hd',
+      '..d...............d.',
+    ],
+  },
+  braid: {
+    front: [
+      '......hhhhhhh.......',
+      '....hhhhhhhhhhh.....',
+      '...hHHHHhhhhhhhh....',
+      '..hhHhhhhhhhhhhhd...',
+      '..hhhhhhhhhhhhhhhd..',
+      '..hhhhhhhhhdhhhhhd..',
+      '..hhhhd......hhhhd..',
+      '..hhd........hhhhd..',
+      '..hh..........hhhd..',
+      '...h..........hhhd..',
+      '..............hhd...',
+    ],
+    // The braid hangs behind the far shoulder in the front view.
+    behind: [
+      '..............hhd...',
+      '..............hHd...',
+      '...............hhd..',
+      '..............dHh...',
+      '...............hhd..',
+      '..............dHh...',
+      '...............hd...',
+      '..............rr....',
+      '..............hd....',
+      '..............dh....',
+    ],
+    behindY: 11,
+    back: [
+      '......hhhhhhhh......',
+      '....hhhhhhhhhhhh....',
+      '...hhHHHhhhhhhhhh...',
+      '..hhHHhhhhhhhhhhhd..',
+      '..hhhhhhhhhhhhhhhd..',
+      '..hhhhhhhhhhhhhhhd..',
+      '..hhhhhhhhhhhhhhhd..',
+      '..hhhhhhhhhhhhhhhd..',
+      '..dhhhhhhhhhhhhhdd..',
+      '...dhhhhhhhhhhhdd...',
+      '.....ddhhhhhdd......',
+      '........hHd.........',
+      '........dhh.........',
+      '........hHd.........',
+      '........dhh.........',
+      '........hHd.........',
+      '.........rr.........',
+      '........hhd.........',
+      '.........d..........',
+    ],
+  },
+  afro: {
+    front: [
+      '.....hhhhhhhhh......',
+      '...hhhHHhhhhhhhh....',
+      '..hhHHHhhhhdhhhhh...',
+      '.hhHHhhhhhhhhhhhhh..',
+      '.hhHhhhdhhhhhhdhhhd.',
+      'hhhhhhhhhhhhhhhhhhhd',
+      'hhhhdhhhhhhhdhhhhhhd',
+      'hhhhh.h..h..hhhhhhhd',
+      'hhhh..........hhhhhd',
+      'hhh...........hhhhd.',
+      '.hh...........hhdhd.',
+      '..d...........hhhd..',
+      '...............dd...',
+    ],
+    back: [
+      '.....hhhhhhhhh......',
+      '...hhhHHhhhhhhhh....',
+      '..hhHHHhhhhdhhhhh...',
+      '.hhHHhhhhhhhhhhhhh..',
+      '.hhHhhhdhhhhhhdhhhd.',
+      'hhhhhhhhhhhhhhhhhhhd',
+      'hhhhhhhHhhhhdhhhhhhd',
+      'hhhdhhhhhhhhhhhhhhhd',
+      'hhhhhhhhhhdhhhhhhhhd',
+      'hhhhhHhhhhhhhHhhhdhd',
+      '.hhhhhhhhhhhhhhhhhd.',
+      '.dhhhhhdhhhhhhhhhdd.',
+      '..ddhhhhhhhhhhhdd...',
+      '....dddddddddddd....',
+    ],
+    frontY: -2, backY: -2,
+  },
+  slick: {
+    front: [
+      '....................',
+      '......hhhhhhh.......',
+      '....hhHHHHHhhh......',
+      '...hHHhhhhhhhhhd....',
+      '...hhhhhhhhhhhhhd...',
+      '...hh.......hhhhd...',
+      '...h.........hhhd...',
+      '..............hhd...',
+      '..............hd....',
+    ],
+    back: [
+      '....................',
+      '......hhhhhhh.......',
+      '....hhHHHHHhhh......',
+      '...hHHhhHHhhhhhd....',
+      '...hhhhhhhhhhhhhd...',
+      '...hhhHhhhhHhhhhd...',
+      '...hhhhhhhhhhhhhd...',
+      '...hhhhhhhhhhhhhd...',
+      '...dhhhhhhhhhhhdd...',
+      '....dhhhhhhhhhdd....',
+      '.....dddddddddd.....',
+    ],
+  },
 };
 
 // ---------- Outfits ----------
@@ -447,7 +607,7 @@ export const OUTFIT_KEYS = Object.keys(OUTFITS);
 
 function drawHairMap(g: Ctx, rows: string[] | undefined, oy: number, hair: string[]) {
   if (!rows) return;
-  const pal: Record<string, string> = { h: hair[2], H: hair[4], d: hair[1] };
+  const pal: Record<string, string> = { h: hair[2], H: hair[4], d: hair[1], r: '#E5566F' };
   rows.forEach((r, y) => {
     for (let x = 0; x < r.length; x++) { const c = pal[r[x]]; if (c) px(g, c, x, oy + y); }
   });
@@ -474,8 +634,9 @@ function drawArm(g: Ctx, sx: number, sy: number, arm: Arm, sleeve: string[], ski
   if (arm.fist) px(g, skin[1], hx, hy + 1);
 }
 
-function drawFace(g: Ctx, expr: Expr, skin: string[], eye: string, dy: number) {
+function drawFace(g: Ctx, expr: Expr, skin: string[], eye: string, dy: number, look: AvatarLook) {
   const y = 8 + dy;
+  const girl = look.body === 'girl';
   const blush = mix(skin[2], '#F0708A', 0.45);
   const eyeL = mix(eye, '#FFFFFF', 0.25);
   switch (expr) {
@@ -486,6 +647,7 @@ function drawFace(g: Ctx, expr: Expr, skin: string[], eye: string, dy: number) {
     case 'closed':
     case 'kiss':
       for (const x of [6, 10]) px(g, eye, x - 1, y + 1, 3, 1);
+      if (girl) { px(g, eye, 4, y); px(g, eye, 12, y); }
       break;
     case 'surprised':
       for (const x of [6, 10]) { px(g, eye, x, y - 1, 1, 3); px(g, '#FFFFFF', x, y - 1); }
@@ -493,16 +655,22 @@ function drawFace(g: Ctx, expr: Expr, skin: string[], eye: string, dy: number) {
     default:
       for (const x of [6, 10]) { px(g, eye, x, y, 1, 2); px(g, eyeL, x, y + 1); px(g, '#FFFFFF', x, y); }
       px(g, eye, 5, y, 1, 1); px(g, eye, 11, y);
+      // Lashes: one flick up and out from each outer corner.
+      if (girl) { px(g, eye, 4, y - 1); px(g, eye, 12, y - 1); }
   }
   // Brows sit just under the bangs and sell the expression.
   if (expr === 'surprised') { px(g, shade(skin[0], -0.25), 5, y - 3, 2, 1); px(g, shade(skin[0], -0.25), 10, y - 3, 2, 1); }
   // Cheeks
-  const blushy = expr === 'blush' || expr === 'kiss' || expr === 'happy' || expr === 'laugh';
+  const blushy = look.blush || expr === 'blush' || expr === 'kiss' || expr === 'happy' || expr === 'laugh';
   if (blushy) { px(g, blush, 5, y + 2); px(g, blush, 11, y + 2, 2, 1); }
   else { px(g, mix(skin[2], blush, 0.5), 5, y + 2); px(g, mix(skin[2], blush, 0.5), 11, y + 2); }
+  if (look.freckles) {
+    const f = mix(skin[1], '#7A3E22', 0.4);
+    for (const [fx, fy] of [[6, y + 2], [13, y + 2], [12, y + 3]]) px(g, f, fx, fy);
+  }
   // Mouth
   // A muted brown-rose, not red: a saturated mouth reads as a cut at this size.
-  const mouth = mix(skin[0], '#7A4A48', 0.6);
+  const mouth = girl ? mix(skin[0], '#A04A58', 0.6) : mix(skin[0], '#7A4A48', 0.6);
   if (expr === 'laugh') { px(g, mouth, 7, y + 3, 3, 1); px(g, '#E86A7A', 8, y + 4); px(g, mouth, 7, y + 4); px(g, mouth, 9, y + 4); }
   else if (expr === 'surprised') { px(g, mouth, 8, y + 3, 1, 2); }
   else if (expr === 'kiss') { px(g, '#D85A6A', 7, y + 3, 1, 1); px(g, '#D85A6A', 7, y + 4); }
@@ -637,6 +805,20 @@ function drawProp(g: Ctx, prop: FrameSpec['prop']) {
   if (prop === 'snack') { px(g, '#E8B860', 0, 11, 3, 2); px(g, '#C8883A', 0, 12, 3, 1); px(g, '#7A4A2A', 1, 11); }
 }
 
+/**
+ * Copy a body layer into g with the chest (collar to waist, rows 13-17) two pixels narrower:
+ * columns 7 and 12 are dropped so the lit and shaded edges and the middle details survive.
+ * Hips and legs are copied as they are, so the waist reads narrower than the hips.
+ */
+function narrowTorso(g: Ctx, src: HTMLCanvasElement, bob: number) {
+  const top = 13 + bob, rows = 5;
+  g.drawImage(src, 0, 0, FW, top, 0, 0, FW, top);
+  g.drawImage(src, 0, top + rows, FW, FH - top - rows, 0, top + rows, FW, FH - top - rows);
+  g.drawImage(src, 0, top, 7, rows, 1, top, 7, rows); // ..6 -> ..7
+  g.drawImage(src, 8, top, 4, rows, 8, top, 4, rows);
+  g.drawImage(src, 13, top, FW - 13, rows, 12, top, FW - 13, rows); // 13.. -> 12..
+}
+
 export interface PaintOptions { look: AvatarLook; frame: string; view: 'front' | 'back' }
 
 /** Paint one frame into g at (ox, oy). */
@@ -654,30 +836,34 @@ export function paintAvatarFrame(g: Ctx, ox: number, oy: number, opt: PaintOptio
   const view = opt.view;
   const headDy = (f.bow ? 1 : 0);
   const sitDrop = f.legs === 'sit' ? 2 : 0;
+  const girl = opt.look.body === 'girl';
+  // Shoulders: the girl body is a pixel narrower on each side.
+  const nearSx = girl ? 6 : 5, farSx = girl ? 12 : 13, behindSx = girl ? 13 : 14;
 
   // Everything above the legs drops when seated; the body bobs on alternate frames.
   cg.save();
   cg.translate(0, sitDrop + bob);
   if (view === 'front') drawHairMap(cg, style.behind, (style.behindY ?? 12) + headDy, hair);
-  if (f.legs !== 'sit' && f.arms[1].behind) drawArm(cg, 14, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
+  if (f.legs !== 'sit' && f.arms[1].behind) drawArm(cg, behindSx, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
   cg.restore();
 
-  cg.save();
-  cg.translate(0, bob);
-  drawBody(cg, outfit, oc, skin, f.legs, view);
-  outfit.detail?.(cg, view, oc);
-  cg.restore();
+  const [bc, bg] = canvas(FW, FH);
+  bg.translate(0, bob);
+  drawBody(bg, outfit, oc, skin, f.legs, view);
+  outfit.detail?.(bg, view, oc);
+  if (girl) narrowTorso(cg, bc, bob);
+  else cg.drawImage(bc, 0, 0);
 
   cg.save();
   cg.translate(0, sitDrop + bob);
-  if (f.legs === 'sit' && f.arms[1].behind) drawArm(cg, 14, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
+  if (f.legs === 'sit' && f.arms[1].behind) drawArm(cg, behindSx, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
   drawHead(cg, skin, headDy, view);
-  if (view === 'front') drawFace(cg, f.expr, skin, eye, headDy);
+  if (view === 'front') drawFace(cg, f.expr, skin, eye, headDy, opt.look);
   drawHairMap(cg, view === 'front' ? style.front : style.back, (view === 'front' ? style.frontY ?? 0 : style.backY ?? 0) + 1 + headDy, hair);
   drawAccessory(cg, opt.look.accessory, view, headDy, hair);
   // Arms go over the body (near arm last). In the back view the near arm is screen-left too.
-  if (!f.arms[1].behind) drawArm(cg, 13, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
-  drawArm(cg, 5, 14, f.arms[0], sleeve, skin, outfit.sleeves === 'short');
+  if (!f.arms[1].behind) drawArm(cg, farSx, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
+  drawArm(cg, nearSx, 14, f.arms[0], sleeve, skin, outfit.sleeves === 'short');
   drawProp(cg, f.prop);
   cg.restore();
 
@@ -708,3 +894,25 @@ export function avatarPreview(look: AvatarLook, frame = 'idle', view: 'front' | 
   return c;
 }
 
+
+const thumbs = new Map<string, string>();
+
+/**
+ * A data URL of one still for picker buttons: the head and shoulders, or the whole body.
+ * Cached by look, since the editor redraws every option on each change.
+ */
+export function avatarThumb(look: AvatarLook, part: 'head' | 'full', scale = 3): string {
+  const key = `${part}${scale}${JSON.stringify(look)}`;
+  const hit = thumbs.get(key);
+  if (hit) return hit;
+  const h = part === 'head' ? 16 : FH;
+  const [s, sg] = canvas(FW, FH);
+  paintAvatarFrame(sg, 0, 0, { look, frame: 'idle', view: 'front' });
+  const [c, g] = canvas(FW * scale, h * scale);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(s, 0, 0, FW, h, 0, 0, FW * scale, h * scale);
+  const url = c.toDataURL();
+  if (thumbs.size > 400) thumbs.clear();
+  thumbs.set(key, url);
+  return url;
+}

@@ -17,12 +17,14 @@ export interface Prefs {
   battery: boolean;
   sfx: boolean;
   music: number;
+  /** Long text and Bible passages in the phone's own fonts instead of pixel. */
+  easyRead: boolean;
   /** Seen the first-run hints. */
   hints: Record<string, boolean>;
 }
 
 const PREFS_KEY = 'oph.prefs';
-const defaults: Prefs = { theme: 'honey', effects: true, battery: false, sfx: true, music: 0.5, hints: {} };
+const defaults: Prefs = { theme: 'honey', effects: true, battery: false, sfx: true, music: 0.5, easyRead: false, hints: {} };
 
 function loadPrefs(): Prefs {
   try { return { ...defaults, ...(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<Prefs>) }; } catch { return { ...defaults }; }
@@ -57,6 +59,8 @@ export const snap = signal<Snapshot | null>(null);
 export const partnerOnline = signal(false);
 export const partnerLastSeen = signal<string | null>(null);
 export const sheet = signal<Sheet>(null);
+/** Set from Settings to walk through the home screen tour again. */
+export const tourReplay = signal(false);
 export const busy = signal(false);
 
 export interface Toast { id: number; text: string; kind: 'info' | 'coins' | 'error' | 'love'; coins?: number }

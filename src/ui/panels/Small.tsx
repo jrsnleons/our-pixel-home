@@ -1,15 +1,17 @@
-// Smaller sheets: starter quests, the "while you were away" feed, the together-since prompt,
-// and the per-item sheets (photo frame, calendar, clock, verse art, globe).
+// Smaller sheets: starter quests, the "while you were away" feed, the together-since step,
+// milestone celebrations, and the per-item sheets (photo frame, calendar, clock, verse art, globe).
 
 import { useState } from 'preact/hooks';
 import { sfx } from '../../audio/audio';
 import type { Placement } from '../../core/grid';
 import { parseRef } from '../../data/bible';
-import { QUESTS } from '../../data/economy';
+import { daysTogether, milestone, QUESTS, sinceFromDays } from '../../data/economy';
 import { INTERACTION_BY_ID } from '../../data/interactions';
 import type { Passage } from '../../net/backend';
+import { dayIn } from '../../net/rules';
 import type { FeedEvent } from '../../net/types';
 import { act, ago, backend, couple, itemName, me, partner, snap, toast } from '../../state/store';
+import { AvatarPreview } from '../AvatarEditor';
 import { Coin, Field, Icon, Sheet } from '../kit';
 import { tzOffsetMinutes } from '../screens/Home';
 
@@ -53,6 +55,7 @@ export function describe(e: FeedEvent): string {
     case 'quest': return 'finished a starter quest';
     case 'decor': return 'redecorated';
     case 'joined': return 'moved in';
+    case 'milestone': return `celebrated ${p.label} with you`;
     default: return 'was here';
   }
 }
@@ -83,18 +86,61 @@ export function Feed({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function SinceDate() {
+/** The setup step after pairing: how long you've been together, as a number of days or a date. */
+export function SinceDate({ onDone }: { onDone: () => void }) {
+  const today = dayIn(me.value?.tz ?? 'UTC', new Date());
+  const [mode, setMode] = useState<'days' | 'date'>('days');
+  const [days, setDays] = useState('');
   const [d, setD] = useState('');
-  const [hidden, setHidden] = useState(false);
-  if (hidden) return null;
+  const n = Math.floor(Number(days));
+  const since = mode === 'days' ? (n >= 1 && n <= 40000 ? sinceFromDays(n, today) : '') : d && d <= today ? d : '';
+  const count = since ? daysTogether(since, new Date(today + 'T12:00:00')) : null;
   return (
-    <Sheet title="One question" onClose={() => setHidden(true)}>
+    <Sheet title="How long have you been together?" onClose={onDone}>
       <div class="col">
-        <p class="small" style={{ marginTop: 0 }}>When did you two start? The counter at the top will show your days together.</p>
-        <input class="input" type="date" value={d} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setD(e.currentTarget.value)} />
-        <button class="btn" disabled={!d} onClick={async () => { const ok = await act('set_couple', { since: d }); if (ok) { sfx('win'); setHidden(true); } }}>Save</button>
+        <p class="small" style={{ marginTop: 0 }}>Your counter at the top starts from here, and you’ll both get a little celebration on monthsaries, every hundredth day and anniversaries.</p>
+        <div class="row" style={{ gap: '8px' }}>
+          <button class="tab" aria-selected={mode === 'days'} onClick={() => { sfx('tap'); setMode('days'); }}>Number of days</button>
+          <button class="tab" aria-selected={mode === 'date'} onClick={() => { sfx('tap'); setMode('date'); }}>The date we started</button>
+        </div>
+        {mode === 'days'
+          ? <Field label="Days together"><input class="input" type="number" inputMode="numeric" min={1} max={40000} value={days} onInput={(e) => setDays(e.currentTarget.value)} placeholder="412" /></Field>
+          : <Field label="We started on"><input class="input" type="date" value={d} max={today} onChange={(e) => setD(e.currentTarget.value)} /></Field>}
+        <div class="code pbox" style={{ fontSize: '1.4em' }}>{count ? `Day ${count.toLocaleString()} together` : 'Day ? together'}</div>
+        <button class="btn" disabled={!since} onClick={async () => { const ok = await act('set_couple', { since }); if (ok) { sfx('win'); onDone(); } }}>That’s us</button>
+        <button class="btn ghost small" onClick={onDone}>Later (you can set it in Me → Us)</button>
       </div>
     </Sheet>
+  );
+}
+
+/** Today's monthsary, hundredth day or anniversary, shown once per day on each phone. */
+export function todaysMilestone(): { label: string; day: string } | null {
+  const s = snap.value;
+  if (!s?.couple?.b) return null;
+  const day = dayIn(s.me.tz, new Date());
+  const ms = milestone(s.couple.since, day);
+  if (!ms) return null;
+  try { if (localStorage.getItem('oph.celebrated') === day) return null; } catch { /* show it */ }
+  return { label: ms.label, day };
+}
+
+export function Celebrate({ label, day, onClose }: { label: string; day: string; onClose: () => void }) {
+  const close = () => { try { localStorage.setItem('oph.celebrated', day); } catch { /* ignore */ } onClose(); };
+  const s = snap.value!;
+  return (
+    <div class="celebrate" onClick={close}>
+      <div class="pbox col center" style={{ padding: '18px 16px', maxWidth: '320px' }}>
+        <div class="pair-art" style={{ marginBottom: '4px' }}>
+          <AvatarPreview look={s.me.look} scale={3} />
+          <span class="pair-heart on"><Icon name="heart" size="l" /></span>
+          {s.partner && <AvatarPreview look={s.partner.look} scale={3} />}
+        </div>
+        <h2 style={{ fontWeight: 'normal', margin: 0 }}>{label}!</h2>
+        <p class="small" style={{ margin: 0 }}>Thank God for every one of these days. There’s a coin gift in your wallet to celebrate.</p>
+        <button class="btn block" onClick={close}>Yay</button>
+      </div>
+    </div>
   );
 }
 

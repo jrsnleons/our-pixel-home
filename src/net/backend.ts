@@ -12,7 +12,7 @@ export interface Rpcs {
   store: { pid: string };
   set_style: { style: RoomStyleRow };
   set_look: { look: AvatarLook };
-  set_profile: { name?: string; city?: string | null; tz?: string };
+  set_profile: { name?: string; city?: string | null; tz?: string; tourDone?: boolean };
   set_couple: { since?: string | null; nextVisit?: string | null };
   placement_data: { pid: string; patch: Record<string, unknown> };
   water: { pid: string };

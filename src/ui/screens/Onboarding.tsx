@@ -1,8 +1,8 @@
-// First-run screens: tap to enter, sign in, make your avatar, pair with your partner.
+// First-run screens: tap to enter, three intro cards, sign in, make your avatar, pair with your partner.
 
 import { useEffect, useState } from 'preact/hooks';
 import { unlockAudio, sfx } from '../../audio/audio';
-import { DEFAULT_LOOK, type AvatarLook } from '../../engine/art/avatar';
+import { DEFAULT_LOOK, HAIR_ORDER, type AvatarLook } from '../../engine/art/avatar';
 import { ActionError } from '../../net/backend';
 import { backend, phase, route, snap, toast } from '../../state/store';
 import { AvatarEditor, AvatarPreview } from '../AvatarEditor';
@@ -15,6 +15,51 @@ export function Boot({ onEnter }: { onEnter: () => void }) {
       <BootArt />
       <div class="title-logo">Our Pixel<br />Home</div>
       <p class="blink" style={{ color: '#fff', textShadow: '2px 2px 0 var(--outline)' }}>Tap to come in</p>
+    </div>
+  );
+}
+
+const INTRO = [
+  { title: 'A little home for the two of you', text: 'The same cozy room on both of your phones, wherever you are. See each other, send hearts and hang out.', art: 'pair' },
+  { title: 'Play, work and decorate together', text: 'Games at the table, café shifts for coins, and furniture from the Store to make the place yours.', art: 'play' },
+  { title: 'Keep each other close to God', text: 'Share prayer requests, keep your own quiet time with the Lord, and cheer each other on.', art: 'pray' },
+] as const;
+
+const GUY: AvatarLook = { ...DEFAULT_LOOK, hair: 'short', hairColor: 1, skin: 2, outfit: 'fit_hoodie' };
+const GIRL: AvatarLook = { ...DEFAULT_LOOK, body: 'girl', hair: 'long', hairColor: 3, skin: 1, outfit: 'fit_dress', blush: true };
+
+/** Three swipeable cards for someone new, shown once before signing in. */
+export function Intro({ onDone }: { onDone: () => void }) {
+  const [i, setI] = useState(0);
+  const [x0, setX0] = useState<number | null>(null);
+  const card = INTRO[i];
+  const go = (n: number) => { if (n >= INTRO.length) { sfx('pop'); onDone(); return; } if (n < 0) return; sfx('tap'); setI(n); };
+  return (
+    <div class="screen boot" style={{ cursor: 'default' }}
+      onTouchStart={(e) => setX0(e.touches[0].clientX)}
+      onTouchEnd={(e) => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; setX0(null); if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1)); }}>
+      <BootArt />
+      <div class="pbox col intro-card" key={i}>
+        <div class="intro-art">
+          {card.art === 'pair' && (
+            <div class="pair-art" style={{ margin: 0 }}>
+              <AvatarPreview look={GUY} scale={4} />
+              <span class="pair-heart on"><Icon name="heart" size="l" /></span>
+              <AvatarPreview look={GIRL} scale={4} />
+            </div>
+          )}
+          {card.art === 'play' && <div class="row intro-icons">{['play', 'work', 'store', 'decorate'].map((n) => <Icon name={n} size="l" />)}</div>}
+          {card.art === 'pray' && <div class="row intro-icons">{['pray', 'bible', 'heart'].map((n) => <Icon name={n} size="l" />)}</div>}
+        </div>
+        <h2 class="center" style={{ fontWeight: 'normal', margin: 0 }}>{card.title}</h2>
+        <p class="center small" style={{ margin: 0 }}>{card.text}</p>
+        <div class="dots" aria-label={`Card ${i + 1} of ${INTRO.length}`}>{INTRO.map((_, j) => <i class={j === i ? 'on' : ''} />)}</div>
+        <div class="row">
+          <button class="btn ghost small" onClick={() => { sfx('close'); onDone(); }}>Skip</button>
+          <div class="grow" />
+          <button class="btn" onClick={() => go(i + 1)}>{i + 1 < INTRO.length ? 'Next' : 'Let’s go'}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -67,7 +112,7 @@ export function SignIn() {
 
 export function MakeProfile({ suggested }: { suggested?: string | null }) {
   const [name, setName] = useState(suggested?.split(' ')[0] ?? '');
-  const [look, setLook] = useState<AvatarLook>({ ...DEFAULT_LOOK, hair: (['short', 'bob', 'long', 'curly'] as const)[Math.floor(Math.random() * 4)], hairColor: Math.floor(Math.random() * 5), skin: Math.floor(Math.random() * 6) });
+  const [look, setLook] = useState<AvatarLook>({ ...DEFAULT_LOOK, hair: HAIR_ORDER.guy[Math.floor(Math.random() * 4)], hairColor: Math.floor(Math.random() * 5), skin: Math.floor(Math.random() * 6) });
   const [busy, setBusy] = useState(false);
   const owned = new Set(['fit_tee', 'fit_hoodie', 'acc_none', 'acc_glasses']);
   const go = async () => {
