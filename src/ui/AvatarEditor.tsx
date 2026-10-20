@@ -1,21 +1,14 @@
-// Body, skin, hair, eyes, face, outfit and accessory picker with a live pixel preview. Every
-// hairstyle, outfit and accessory is shown as a little picture of you wearing it.
+// Body, skin, hair, eyes and face, plus clothes slot by slot, with a live pixel preview. Every
+// choice is shown as a little picture of you wearing it.
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { sfx } from '../audio/audio';
-import { ITEMS } from '../data/catalog';
+import { OPTIONAL, PIECES, SLOT_NAMES, SLOTS, parseWorn, wearOf, worn, type Piece, type Slot, type Wear } from '../data/clothes';
 import { avatarPreview, avatarThumb, EYE_COLORS, HAIR_COLOR_NAMES, HAIR_COLORS, HAIR_NAMES, HAIR_ORDER, SKINS, type AvatarLook, type Body } from '../engine/art/avatar';
-import { sheet } from '../state/store';
-import { Coin } from './kit';
+import { Tabs } from './kit';
 
 // Mostly breathing and blinking, with one wave per loop: a constant wave looks frantic.
 const FRAMES = ['idle', 'idle', 'idle2', 'idle2', 'idle', 'blink', 'idle', 'idle2', 'idle', 'idle', 'wave1', 'wave2', 'wave1', 'wave2', 'idle', 'idle2'];
-
-/** Outfits that suit each body go first; the rest follow in catalog order. */
-const OUTFIT_FIRST: Record<Body, string[]> = {
-  guy: ['fit_tee', 'fit_hoodie', 'fit_flannel', 'fit_sunday', 'fit_formal', 'fit_sweater'],
-  girl: ['fit_dress', 'fit_sweater', 'fit_raincoat', 'fit_pajamas', 'fit_tee', 'fit_hoodie'],
-};
 
 export function AvatarPreview({ look, scale = 6, animate = true }: { look: AvatarLook; scale?: number; animate?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
@@ -38,26 +31,82 @@ export function AvatarPreview({ look, scale = 6, animate = true }: { look: Avata
   );
 }
 
-export function AvatarEditor({ look, onChange, owned, onlyOwned = false }: { look: AvatarLook; onChange: (l: AvatarLook) => void; owned: Set<string>; onlyOwned?: boolean }) {
+/** Put one piece on, keeping the outfit wearable: a dress replaces bottoms, bottoms replace a dress. */
+export function putOn(wear: Wear, piece: Piece, color: number, owned: Set<string>): Wear {
+  const w: Wear = { ...wear, [piece.slot]: worn(piece.key, color) };
+  if (piece.slot === 'top' && piece.full) delete w.bottom;
+  if (piece.slot === 'top' && !piece.full && !w.bottom) w.bottom = firstOwned('bottom', owned);
+  if (piece.slot === 'bottom' && parseWorn(w.top)?.piece.full) w.top = firstOwned('top', owned, (p) => !p.full);
+  return w;
+}
+
+function firstOwned(slot: Slot, owned: Set<string>, ok: (p: Piece) => boolean = () => true): string {
+  for (const p of PIECES) if (p.slot === slot && ok(p)) for (let i = 0; i < p.colors.length; i++) if (owned.has(worn(p.key, i))) return worn(p.key, i);
+  return slot === 'top' ? 'tee:0' : 'jeans:0';
+}
+
+/** Tops, bottoms, shoes, hats, glasses and bags you own, with each one's colorways. */
+export function ClothesPicker({ look, onChange, owned }: { look: AvatarLook; onChange: (l: AvatarLook) => void; owned: Set<string> }) {
+  const [slot, setSlot] = useState<Slot>('top');
+  const wear = wearOf(look);
+  const on = parseWorn(wear[slot]);
+  const dress = parseWorn(wear.top)?.piece.full;
+  const mine = PIECES.filter((p) => p.slot === slot && p.colors.some((_, i) => owned.has(worn(p.key, i))));
+  const set = (w: Wear) => { sfx('tap'); onChange({ ...look, wear: w }); };
+  const thumbOf = (w: Wear) => avatarThumb({ ...look, wear: w }, slot === 'hat' || slot === 'face' ? 'head' : 'full', slot === 'hat' || slot === 'face' ? 3 : 2);
+  return (
+    <div class="col" style={{ gap: '8px' }}>
+      <Tabs value={slot} onChange={(s) => { sfx('tap'); setSlot(s); }} options={SLOTS.map((s) => ({ key: s, label: SLOT_NAMES[s] }))} />
+      {slot === 'bottom' && dress && <p class="tiny muted" style={{ margin: 0 }}>Your dress covers this. Pick bottoms to switch to a top.</p>}
+      <div class="pick-grid">
+        {OPTIONAL.includes(slot) && (
+          <button class="pick" aria-pressed={!wear[slot]} onClick={() => { const w = { ...wear }; delete w[slot]; set(w); }}>
+            <img class="px" src={thumbOf({ ...wear, [slot]: undefined })} alt="" />
+            <span>None</span>
+          </button>
+        )}
+        {mine.map((p) => {
+          const c = on?.piece.key === p.key ? on.color : p.colors.findIndex((_, i) => owned.has(worn(p.key, i)));
+          return (
+            <button class="pick" aria-pressed={on?.piece.key === p.key} onClick={() => set(putOn(wear, p, c, owned))}>
+              <img class="px" src={thumbOf(putOn(wear, p, c, owned))} alt="" />
+              <span>{p.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      {on && on.piece.colors.length > 1 && (
+        <div class="col" style={{ gap: '6px' }}>
+          <span class="small muted">{on.piece.name} colors</span>
+          <div class="swatches">
+            {on.piece.colors.map((c, i) => {
+              const have = owned.has(worn(on.piece.key, i));
+              return (
+                <button class={`swatch ${have ? '' : 'locked'}`} aria-label={`${on.piece.colorNames[i]}${have ? '' : ' (not owned)'}`} aria-pressed={on.color === i} style={{ background: c }}
+                  disabled={!have} onClick={() => set(putOn(wear, on.piece, i, owned))} />
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AvatarEditor({ look, onChange, owned, clothesFirst = false }: { look: AvatarLook; onChange: (l: AvatarLook) => void; owned: Set<string>; clothesFirst?: boolean }) {
   const set = (p: Partial<AvatarLook>) => { sfx('tap'); onChange({ ...look, ...p }); };
   const body: Body = look.body === 'girl' ? 'girl' : 'guy';
-  // First-time setup shows only what you have; the wardrobe also shows what the Store sells.
-  const first = OUTFIT_FIRST[body];
-  const rank = (k: string) => { const i = first.indexOf(k); return i < 0 ? first.length : i; };
-  const outfits = ITEMS.filter((i) => i.category === 'outfit' && (!onlyOwned || owned.has(i.key))).sort((a, b) => rank(a.key) - rank(b.key));
-  const accs = ITEMS.filter((i) => i.category === 'accessory' && (!onlyOwned || owned.has(i.key)));
-  const toStore = () => { sfx('open'); sheet.value = 'store'; };
+  // Thumbnails of the head alone don't need what you're wearing on your head.
+  const bare: AvatarLook = { ...look, wear: { ...wearOf(look), hat: undefined, face: undefined } };
+  const clothes = <Group label="Clothes"><ClothesPicker look={look} onChange={onChange} owned={owned} /></Group>;
   return (
     <div class="col" style={{ gap: '14px' }}>
-      <div class="editor-stage">
-        <AvatarPreview look={look} scale={7} />
-        <span class="tiny muted">Tap to turn around</span>
-      </div>
+      {clothesFirst && clothes}
       <Group label="Body">
         <div class="pick-grid two">
           {(['guy', 'girl'] as const).map((b) => (
-            <button class="pick" aria-pressed={body === b} onClick={() => set(onlyOwned && !HAIR_ORDER[b].slice(0, 6).includes(look.hair) ? { body: b, hair: HAIR_ORDER[b][0] } : { body: b })}>
-              <img class="px" src={avatarThumb({ ...look, body: b }, 'head', 3)} alt="" />
+            <button class="pick" aria-pressed={body === b} onClick={() => set(!HAIR_ORDER[b].slice(0, 6).includes(look.hair) ? { body: b, hair: HAIR_ORDER[b][0] } : { body: b })}>
+              <img class="px" src={avatarThumb({ ...bare, body: b }, 'head', 3)} alt="" />
               <span>{b === 'guy' ? 'Guy' : 'Girl'}</span>
             </button>
           ))}
@@ -70,7 +119,7 @@ export function AvatarEditor({ look, onChange, owned, onlyOwned = false }: { loo
         <div class="pick-grid">
           {HAIR_ORDER[body].map((h) => (
             <button class="pick" aria-pressed={look.hair === h} onClick={() => set({ hair: h })}>
-              <img class="px" src={avatarThumb({ ...look, hair: h, accessory: 'acc_none' }, 'head', 3)} alt="" />
+              <img class="px" src={avatarThumb({ ...bare, hair: h }, 'head', 3)} alt="" />
               <span>{HAIR_NAMES[h]}</span>
             </button>
           ))}
@@ -88,39 +137,21 @@ export function AvatarEditor({ look, onChange, owned, onlyOwned = false }: { loo
           <button class="tab" aria-selected={!!look.blush} onClick={() => set({ blush: !look.blush })}>Rosy cheeks</button>
         </div>
       </Group>
-      <Group label="Outfit">
-        <div class="pick-grid">
-          {outfits.map((o) => {
-            const have = owned.has(o.key);
-            return (
-              <button class={`pick ${have ? '' : 'locked'}`} aria-pressed={look.outfit === o.key} onClick={have ? () => set({ outfit: o.key }) : toStore}>
-                <img class="px" src={avatarThumb({ ...look, outfit: o.key }, 'full', 2)} alt="" />
-                <span>{o.name}</span>
-                {!have && <span class="price"><Coin n={o.price} /></span>}
-              </button>
-            );
-          })}
-        </div>
-      </Group>
-      <Group label="Accessory">
-        <div class="pick-grid">
-          {accs.map((o) => {
-            const have = owned.has(o.key);
-            return (
-              <button class={`pick ${have ? '' : 'locked'}`} aria-pressed={look.accessory === o.key} onClick={have ? () => set({ accessory: o.key }) : toStore}>
-                <img class="px" src={avatarThumb({ ...look, accessory: o.key }, 'head', 3)} alt="" />
-                <span>{o.name}</span>
-                {!have && <span class="price"><Coin n={o.price} /></span>}
-              </button>
-            );
-          })}
-        </div>
-      </Group>
-      <p class="tiny muted">{onlyOwned ? 'More outfits and accessories are in the Store.' : 'Tap a locked one to find it in the Store.'}</p>
+      {!clothesFirst && clothes}
     </div>
   );
 }
 
-function Group({ label, children }: { label: string; children: preact.ComponentChildren }) {
+export function Group({ label, children }: { label: string; children: preact.ComponentChildren }) {
   return <div class="col" style={{ gap: '6px' }}><span class="small muted">{label}</span>{children}</div>;
+}
+
+/** The live preview above an editor; sticky keeps it in view while you scroll the options. */
+export function EditorStage({ look, sticky = false }: { look: AvatarLook; sticky?: boolean }) {
+  return (
+    <div class={`editor-stage ${sticky ? 'sticky' : ''}`}>
+      <AvatarPreview look={look} scale={sticky ? 5 : 7} />
+      {!sticky && <span class="tiny muted">Tap to turn around</span>}
+    </div>
+  );
 }

@@ -1,6 +1,7 @@
 // Smaller sheets: starter quests, the "while you were away" feed, the together-since step,
 // milestone celebrations, and the per-item sheets (photo frame, calendar, clock, verse art, globe).
 
+import { PIECE_BY_KEY } from '../../data/clothes';
 import { useState } from 'preact/hooks';
 import { sfx } from '../../audio/audio';
 import type { Placement } from '../../core/grid';
@@ -44,7 +45,8 @@ export function describe(e: FeedEvent): string {
     case 'heart': return 'sent you a heart';
     case 'interaction': return INTERACTION_BY_ID[String(p.id)]?.away ?? 'did something sweet';
     case 'nudge': return p.kind === 'verse' ? `sent you a verse: ${p.ref ?? ''}${p.text ? ` “${p.text}”` : ''}` : `encouraged you: “${p.text}”`;
-    case 'buy': return `bought ${itemName(String(p.item))}`;
+    case 'buy': return p.color != null && PIECE_BY_KEY[String(p.item)] ? `bought a ${PIECE_BY_KEY[String(p.item)].colorNames[Number(p.color)]?.toLowerCase() ?? ''} ${itemName(String(p.item))}` : `bought ${itemName(String(p.item))}`;
+    case 'outfit': return 'picked an outfit for you';
     case 'note': return `wrote a page${p.title ? `: ${p.title}` : ''}`;
     case 'prayer': return `added a prayer request: “${p.text}”`;
     case 'prayed': return `prayed for “${p.text}”`;

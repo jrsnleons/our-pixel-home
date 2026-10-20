@@ -628,6 +628,30 @@ const decor: Record<string, Builder> = {
       }),
     };
   },
+  clothes_rack: (P) => {
+    const g = G();
+    const m = P.metal;
+    // Two feet, two posts and a rail, with a few things hanging on it.
+    for (const x of [0.12, 0.82]) {
+      g.add(cbox(x - 0.04, 0, 0.3, 0.14, 0.04, 0.4, m[0]));
+      g.add(cbox(x, 0.04, 0.48, 0.05, 1.5, 0.05, m[1]));
+    }
+    g.add(cbox(0.12, 1.5, 0.48, 0.75, 0.05, 0.05, m[2]));
+    const clothes = [['#E8A0A8', 0], ['#F2EEE4', 1], ['#7A9AC8', 0], ['#C9603E', 2], ['#9DB38A', 1]] as const;
+    g.add(panel(0.15, 0.62, 0.5, 0.7, 0.9, (c, W, H) => {
+      const w = 4, gap = (W - clothes.length * w) / (clothes.length - 1);
+      clothes.forEach(([col, kind], i) => {
+        const r = ramp(col), x = Math.round(i * (w + gap));
+        px(c, m[0], x + 1, 0, 2, 1); px(c, m[0], x + 2, 1); // hanger hook
+        px(c, r[1], x, 2, w, 1);
+        const len = kind === 1 ? H - 3 : kind === 2 ? H - 6 : H - 7;
+        px(c, r[2], x, 3, w, len); px(c, r[3], x, 3, 1, len); px(c, r[0], x + w - 1, 3, 1, len);
+        if (kind === 1) for (let y = 6; y < H - 1; y += 3) px(c, r[1], x + 1, y, 2, 1);
+        else px(c, r[1], x, 2 + len, w, 1);
+      });
+    }, { alpha: true, cast: true }));
+    return { group: g };
+  },
   mirror: (P) => {
     const g = G();
     g.add(B(0.18, 0, 0.42, 0.64, 1.7, 0.1, {

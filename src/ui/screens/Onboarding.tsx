@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'preact/hooks';
 import { unlockAudio, sfx } from '../../audio/audio';
+import { ownedClothes } from '../../data/clothes';
 import { DEFAULT_LOOK, HAIR_ORDER, type AvatarLook } from '../../engine/art/avatar';
 import { ActionError } from '../../net/backend';
 import { backend, phase, route, snap, toast } from '../../state/store';
-import { AvatarEditor, AvatarPreview } from '../AvatarEditor';
+import { AvatarEditor, AvatarPreview, EditorStage } from '../AvatarEditor';
 import { BootArt } from '../BootArt';
 import { Field, Icon } from '../kit';
 
@@ -25,8 +26,8 @@ const INTRO = [
   { title: 'Keep each other close to God', text: 'Share prayer requests, keep your own quiet time with the Lord, and cheer each other on.', art: 'pray' },
 ] as const;
 
-const GUY: AvatarLook = { ...DEFAULT_LOOK, hair: 'short', hairColor: 1, skin: 2, outfit: 'fit_hoodie' };
-const GIRL: AvatarLook = { ...DEFAULT_LOOK, body: 'girl', hair: 'long', hairColor: 3, skin: 1, outfit: 'fit_dress', blush: true };
+const GUY: AvatarLook = { ...DEFAULT_LOOK, hair: 'short', hairColor: 1, skin: 2, wear: { top: 'hoodie:0', bottom: 'joggers:0', shoes: 'sneakers:0' } };
+const GIRL: AvatarLook = { ...DEFAULT_LOOK, body: 'girl', hair: 'long', hairColor: 3, skin: 1, wear: { top: 'sundress:0', shoes: 'maryjanes:1', hat: 'bow:1' }, blush: true };
 
 /** Three swipeable cards for someone new, shown once before signing in. */
 export function Intro({ onDone }: { onDone: () => void }) {
@@ -114,7 +115,7 @@ export function MakeProfile({ suggested }: { suggested?: string | null }) {
   const [name, setName] = useState(suggested?.split(' ')[0] ?? '');
   const [look, setLook] = useState<AvatarLook>({ ...DEFAULT_LOOK, hair: HAIR_ORDER.guy[Math.floor(Math.random() * 4)], hairColor: Math.floor(Math.random() * 5), skin: Math.floor(Math.random() * 6) });
   const [busy, setBusy] = useState(false);
-  const owned = new Set(['fit_tee', 'fit_hoodie', 'acc_none', 'acc_glasses']);
+  const owned = ownedClothes([]);
   const go = async () => {
     if (!name.trim()) { toast('What should your partner call you?', 'error'); return; }
     setBusy(true);
@@ -132,10 +133,11 @@ export function MakeProfile({ suggested }: { suggested?: string | null }) {
   return (
     <div class="screen" style={{ background: 'var(--bg)' }}>
       <h1 style={{ fontWeight: 'normal', margin: '0 0 6px' }}>Make your little you</h1>
-      <p class="muted small" style={{ marginTop: 0 }}>You can change all of this later in Me.</p>
+      <p class="muted small" style={{ marginTop: 0 }}>Later, a clothes rack or mirror in your room lets you change.</p>
       <Field label="Your name"><input class="input" value={name} maxLength={24} onInput={(e) => setName(e.currentTarget.value)} placeholder="Name" autocomplete="given-name" /></Field>
       <div style={{ height: '14px' }} />
-      <AvatarEditor look={look} onChange={setLook} owned={owned} onlyOwned />
+      <EditorStage look={look} />
+      <AvatarEditor look={look} onChange={setLook} owned={owned} />
       <div style={{ height: '16px' }} />
       <button class="btn block" disabled={busy} onClick={go}>That’s me</button>
     </div>

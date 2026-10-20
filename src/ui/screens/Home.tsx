@@ -20,6 +20,7 @@ import { Notes, type NotesTab } from '../panels/Notes';
 import { Me } from '../panels/Me';
 import { Store } from '../panels/Store';
 import { Work } from '../panels/Work';
+import { OutfitGift, Wardrobe } from '../panels/Wardrobe';
 import { GameSheet } from '../games/GameSheet';
 import { Celebrate, Feed, ItemSheet, Quests, SinceDate, todaysMilestone, type ItemSheetKind } from '../panels/Small';
 
@@ -252,7 +253,7 @@ export function Home() {
           onGame={(k) => void startGame(k, bubble.p)}
           onNotes={(tab) => { setBubble(null); setNotesTab(tab); sheet.value = 'notes'; }}
           onSheet={(kind) => { setBubble(null); setItemSheet({ kind, p: bubble.p }); }}
-          onMe={() => { setBubble(null); sheet.value = 'me'; }}
+          onMe={() => { setBubble(null); sheet.value = 'wardrobe'; }}
           onMusic={(on) => { setMusic(on); }}
         />
       )}
@@ -300,6 +301,8 @@ export function Home() {
       {sheet.value === 'decorate' && scene && <Decorate scene={scene} onClose={() => open(null)} bind={(d, p) => { decorTapRef.current = d; placingRef.current = p; }} />}
       {sheet.value === 'notes' && <Notes onClose={() => open(null)} tab={notesTab} setTab={setNotesTab} />}
       {sheet.value === 'me' && <Me onClose={() => open(null)} />}
+      {sheet.value === 'wardrobe' && <Wardrobe onClose={() => open(null)} />}
+      {snap.value?.me.gift && !sheet.value && !game && !showTour && <OutfitGift />}
       {sheet.value === 'quests' && <Quests onClose={() => open(null)} />}
       {feedOpen && <Feed onClose={() => { markFeedSeen(); setFeedOpen(false); }} />}
       {game && <GameSheet gameId={game.id} kind={game.kind} onClose={() => setGame(null)} />}

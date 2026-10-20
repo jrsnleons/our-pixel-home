@@ -247,7 +247,7 @@ const BOTTOMS: Record<string, BottomArt> = {
   cargo: { kind: 'pants', detail: (g, _v, C, k) => { px(g, C[1], k.l, 21, 1, 2); px(g, C[3], k.l, 21); px(g, C[0], k.r + 2, 21, 1, 2); px(g, C[1], 6, 19, 8, 1); } },
   slacks: { kind: 'pants', detail: (g, v, C, k) => { px(g, C[3], k.l + 1, 21, 1, 3 + k.offL); px(g, C[3], k.r + 1, 21, 1, 3 + k.offR); px(g, C[0], 6, 19, 8, 1); if (v === 'front') px(g, '#C8A040', 9, 19); } },
   shorts: { kind: 'shorts', detail: (g, _v, C, k) => { px(g, C[3], k.l, 21, 3, 1); px(g, C[3], k.r, 21, 3, 1); } },
-  mini_skirt: { kind: 'mini', detail: (g, _v, C) => { for (const x of [6, 8, 10, 12]) px(g, C[1], x, 20); px(g, C[0], 6, 19, 8, 1); } },
+  mini_skirt: { kind: 'mini', detail: (g, _v, C) => { for (const x of [6, 8, 10, 12]) px(g, C[1], x, 20, 1, 2); px(g, C[1], 6, 19, 8, 1); } },
   midi_skirt: { kind: 'midi', detail: (g, _v, C) => { px(g, C[1], 8, 20, 1, 2); px(g, C[1], 11, 20, 1, 2); } },
   overalls: {
     kind: 'pants',
@@ -289,7 +289,7 @@ export function sleeveOf(d: Dressed): { C: R; bare: number } {
 }
 
 function skirtShape(g: Ctx, C: R, len: SkirtLen, skin: R, k: LegSpan) {
-  const hem = { mini: 20, short: 21, midi: 22, maxi: 23 }[len];
+  const hem = { mini: 21, short: 21, midi: 22, maxi: 23 }[len];
   px(g, C[2], 6, 19, 8, 1);
   px(g, C[2], 5, 20, 10, hem - 19);
   if (len === 'maxi') { px(g, C[2], 4, 22, 12, 2); px(g, C[3], 4, 22, 1, 2); }
@@ -391,11 +391,11 @@ export function paintBody(g: Ctx, d: Dressed, f: Fit, v: View) {
   } else {
     if (skirt) skirtShape(g, L, skirt, skin, k);
     else if (d.bottom) pants(g, L, d.bottom.art.kind, skin, k);
+    // Prints and pockets on the legs, then shoes over the hems (boots cover the cuffs).
+    if (d.bottom && !t.skirt) d.bottom.art.detail?.(g, v, d.bottom.C, k);
     const bare = !!skirt && skirt !== 'maxi';
     for (const [x, off] of [[5, k.offL], [10, k.offR]] as const) shoe(g, S.key, S.C, v, x, 24 + off, bare);
   }
-  // Details after the shapes, so prints and pockets sit on top.
-  if (d.bottom && !t.skirt && !sitting) d.bottom.art.detail?.(g, v, d.bottom.C, k);
   t.detail?.(g, v, d.top.C, f);
   if (d.bottom && !t.skirt) d.bottom.art.over?.(g, v, d.bottom.C);
   // Straps across the chest.
@@ -502,8 +502,8 @@ export function paintHeadwear(g: Ctx, d: Dressed, v: View, dy: number) {
       px(g, C[1], 2, 6 + dy, 2, 4); px(g, C[1], 16, 6 + dy, 2, 4); px(g, C[3], 2, 6 + dy); px(g, C[3], 16, 6 + dy);
       break;
     case 'cat_ears':
-      for (const x of [5, 12]) { px(g, C[2], x, dy, 3, 2); px(g, C[2], x + 1, dy - 1); px(g, '#F2A7C3', x + 1, 1 + dy); }
-      px(g, C[0], 4, 2 + dy, 12, 1);
+      for (const x of [4, 13]) { px(g, C[2], x, 1 + dy, 3, 2); px(g, C[2], x + 1, dy); px(g, C[3], x, 1 + dy); px(g, '#F2A7C3', x + 1, 2 + dy); }
+      px(g, C[0], 4, 3 + dy, 12, 1);
       break;
   }
 }

@@ -3,13 +3,14 @@
 
 import { batch, computed, signal } from '@preact/signals';
 import { ITEM_BY_KEY } from '../data/catalog';
+import { PIECE_BY_KEY } from '../data/clothes';
 import { daysTogether } from '../data/economy';
 import type { ThemeKey } from '../data/themes';
 import { ActionError, type Backend, type RpcName, type Rpcs } from '../net/backend';
 import type { FeedEvent, Patch, Snapshot } from '../net/types';
 
 export type Phase = 'boot' | 'signin' | 'profile' | 'pair' | 'home' | 'archived';
-export type Sheet = 'store' | 'work' | 'decorate' | 'notes' | 'me' | 'quests' | 'feed' | null;
+export type Sheet = 'store' | 'work' | 'decorate' | 'notes' | 'me' | 'quests' | 'feed' | 'wardrobe' | null;
 
 export interface Prefs {
   theme: ThemeKey;
@@ -31,6 +32,8 @@ function loadPrefs(): Prefs {
 }
 
 export const prefs = signal<Prefs>(loadPrefs());
+/** The Store tab to open on next (a jump from the wardrobe or a tip). */
+export const storeTab = signal<string | null>(null);
 export function setPrefs(p: Partial<Prefs>) {
   prefs.value = { ...prefs.value, ...p };
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value)); } catch { /* ignore */ }
@@ -123,7 +126,7 @@ export async function act<K extends RpcName>(name: K, args: Rpcs[K], opts: { qui
   }
 }
 
-export function itemName(key: string) { return ITEM_BY_KEY[key]?.name ?? key; }
+export function itemName(key: string) { return ITEM_BY_KEY[key]?.name ?? PIECE_BY_KEY[key]?.name.toLowerCase() ?? key; }
 
 /** "5 min ago", "yesterday", "3 days ago" */
 export function ago(iso: string | null | undefined): string {

@@ -238,15 +238,17 @@ function needWardrobe(c: Ctx) {
   if (!hasWardrobe(c.w)) throw new RuleError('Put a clothes rack, mirror or wardrobe in your room first.');
 }
 
-function mustOwn(w: World, wear: Wear) {
+/** Every piece must be bought, or already on the person wearing it (so nobody is made to undress). */
+function mustOwn(w: World, wear: Wear, on: AvatarLook) {
   const own = ownedClothes(w.unlocks);
-  for (const v of Object.values(wear)) if (v && !own.has(v)) throw new RuleError('Buy that in the store first.');
+  const already = Object.values(wearOf(on));
+  for (const v of Object.values(wear)) if (v && !own.has(v) && !already.includes(v)) throw new RuleError('Buy that in the store first.');
 }
 
 export function setLook(c: Ctx, look: AvatarLook) {
   needWardrobe(c);
   const l = cleanLook(look);
-  mustOwn(c.w, l.wear);
+  mustOwn(c.w, l.wear, c.w.profiles[c.me].look);
   c.w.profiles[c.me].look = l;
 }
 
@@ -292,7 +294,7 @@ export function giftLook(c: Ctx, wear: Wear) {
   const them = partnerOf(c);
   if (!them || !c.w.profiles[them]) throw new RuleError('Your partner hasn’t moved in yet.');
   const w = cleanWear(wear);
-  mustOwn(c.w, w);
+  mustOwn(c.w, w, c.w.profiles[them].look);
   c.w.profiles[them].gift = { wear: w, from: c.me, at: c.now.toISOString() };
   event(c, 'outfit', {});
 }
@@ -301,7 +303,7 @@ export function answerGift(c: Ctx, accept: boolean) {
   const me = c.w.profiles[c.me];
   if (!me.gift) throw new RuleError('There’s no outfit waiting.');
   if (accept) {
-    mustOwn(c.w, me.gift.wear);
+    mustOwn(c.w, me.gift.wear, me.look);
     me.look = { ...cleanLook(me.look), wear: me.gift.wear };
   }
   me.gift = null;
