@@ -10,7 +10,7 @@ import { Tabs } from './kit';
 // Mostly breathing and blinking, with one wave per loop: a constant wave looks frantic.
 const FRAMES = ['idle', 'idle', 'idle2', 'idle2', 'idle', 'blink', 'idle', 'idle2', 'idle', 'idle', 'wave1', 'wave2', 'wave1', 'wave2', 'idle', 'idle2'];
 
-export function AvatarPreview({ look, scale = 6, animate = true }: { look: AvatarLook; scale?: number; animate?: boolean }) {
+export function AvatarPreview({ look, scale = 3, animate = true }: { look: AvatarLook; scale?: number; animate?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<'front' | 'back'>('front');
   const [f, setF] = useState(0);
@@ -53,7 +53,7 @@ export function ClothesPicker({ look, onChange, owned }: { look: AvatarLook; onC
   const dress = parseWorn(wear.top)?.piece.full;
   const mine = PIECES.filter((p) => p.slot === slot && p.colors.some((_, i) => owned.has(worn(p.key, i))));
   const set = (w: Wear) => { sfx('tap'); onChange({ ...look, wear: w }); };
-  const thumbOf = (w: Wear) => avatarThumb({ ...look, wear: w }, slot === 'hat' || slot === 'face' ? 'head' : 'full', slot === 'hat' || slot === 'face' ? 3 : 2);
+  const thumbOf = (w: Wear) => avatarThumb({ ...look, wear: w }, slot === 'hat' || slot === 'face' ? 'head' : 'full', slot === 'hat' || slot === 'face' ? 2 : 1);
   return (
     <div class="col" style={{ gap: '8px' }}>
       <Tabs value={slot} onChange={(s) => { sfx('tap'); setSlot(s); }} options={SLOTS.map((s) => ({ key: s, label: SLOT_NAMES[s] }))} />
@@ -93,51 +93,82 @@ export function ClothesPicker({ look, onChange, owned }: { look: AvatarLook; onC
   );
 }
 
-export function AvatarEditor({ look, onChange, owned, clothesFirst = false }: { look: AvatarLook; onChange: (l: AvatarLook) => void; owned: Set<string>; clothesFirst?: boolean }) {
+type Part = 'clothes' | 'body' | 'hair' | 'face';
+const PARTS: { key: Part; label: string }[] = [{ key: 'body', label: 'Body' }, { key: 'hair', label: 'Hair' }, { key: 'face', label: 'Face' }, { key: 'clothes', label: 'Clothes' }];
+
+/** Every hair style works on both bodies; one fixed order, so switching body never reshuffles it. */
+const HAIR_PICKS = ['short', 'slick', 'buzz', 'curly', 'afro', 'wavy', 'long', 'bob', 'ponytail', 'twintails', 'braid', 'bun'];
+
+/**
+ * The editor: a preview that stays in view with tabs under it, so each group of options is one
+ * short page instead of one long scroll. clothesFirst opens on Clothes (the wardrobe).
+ */
+export function AvatarEditor({ look, onChange, owned, clothesFirst = false, foot }: { look: AvatarLook; onChange: (l: AvatarLook) => void; owned: Set<string>; clothesFirst?: boolean; foot?: preact.ComponentChildren }) {
+  const [part, setPart] = useState<Part>(clothesFirst ? 'clothes' : 'body');
   const set = (p: Partial<AvatarLook>) => { sfx('tap'); onChange({ ...look, ...p }); };
   const body: Body = look.body === 'girl' ? 'girl' : 'guy';
   // Thumbnails of the head alone don't need what you're wearing on your head.
   const bare: AvatarLook = { ...look, wear: { ...wearOf(look), hat: undefined, face: undefined } };
-  const clothes = <Group label="Clothes"><ClothesPicker look={look} onChange={onChange} owned={owned} /></Group>;
+  const parts = clothesFirst ? [PARTS[3], ...PARTS.slice(0, 3)] : PARTS;
+  // Switching body keeps your hair, unless it was the other body's starting style.
+  const asBody = (b: Body): Partial<AvatarLook> => (look.hair === HAIR_ORDER[body][0] && b !== body ? { body: b, hair: HAIR_ORDER[b][0] } : { body: b });
   return (
-    <div class="col" style={{ gap: '14px' }}>
-      {clothesFirst && clothes}
-      <Group label="Body">
-        <div class="pick-grid two">
-          {(['guy', 'girl'] as const).map((b) => (
-            <button class="pick" aria-pressed={body === b} onClick={() => set(!HAIR_ORDER[b].slice(0, 6).includes(look.hair) ? { body: b, hair: HAIR_ORDER[b][0] } : { body: b })}>
-              <img class="px" src={avatarThumb({ ...bare, body: b }, 'head', 3)} alt="" />
-              <span>{b === 'guy' ? 'Guy' : 'Girl'}</span>
-            </button>
-          ))}
-        </div>
-      </Group>
-      <Group label="Skin">
-        <div class="swatches">{SKINS.map((c, i) => <button class="swatch" aria-label={`Skin ${i + 1}`} aria-pressed={look.skin === i} style={{ background: c }} onClick={() => set({ skin: i })} />)}</div>
-      </Group>
-      <Group label="Hair">
-        <div class="pick-grid">
-          {HAIR_ORDER[body].map((h) => (
-            <button class="pick" aria-pressed={look.hair === h} onClick={() => set({ hair: h })}>
-              <img class="px" src={avatarThumb({ ...bare, hair: h }, 'head', 3)} alt="" />
-              <span>{HAIR_NAMES[h]}</span>
-            </button>
-          ))}
-        </div>
-      </Group>
-      <Group label="Hair color">
-        <div class="swatches">{HAIR_COLORS.map((c, i) => <button class="swatch" aria-label={HAIR_COLOR_NAMES[i]} aria-pressed={look.hairColor === i} style={{ background: c }} onClick={() => set({ hairColor: i })} />)}</div>
-      </Group>
-      <Group label="Eyes">
-        <div class="swatches">{EYE_COLORS.map((c, i) => <button class="swatch" aria-label={`Eyes ${i + 1}`} aria-pressed={look.eyes === i} style={{ background: c }} onClick={() => set({ eyes: i })} />)}</div>
-      </Group>
-      <Group label="Face">
-        <div class="row" style={{ gap: '8px' }}>
-          <button class="tab" aria-selected={!!look.freckles} onClick={() => set({ freckles: !look.freckles })}>Freckles</button>
-          <button class="tab" aria-selected={!!look.blush} onClick={() => set({ blush: !look.blush })}>Rosy cheeks</button>
-        </div>
-      </Group>
-      {!clothesFirst && clothes}
+    <div class="editor">
+      <div class="editor-top">
+        <EditorStage look={look} compact />
+        <Tabs value={part} onChange={(k) => { sfx('tap'); setPart(k); }} options={parts} />
+      </div>
+      <div class="col editor-page" style={{ gap: '14px' }}>
+        {part === 'body' && (
+          <>
+            <Group label="Body">
+              <div class="pick-grid two">
+                {(['guy', 'girl'] as const).map((b) => (
+                  <button class="pick" aria-pressed={body === b} onClick={() => set(asBody(b))}>
+                    <img class="px" src={avatarThumb({ ...bare, ...asBody(b) }, 'full', 2)} alt="" />
+                    <span>{b === 'guy' ? 'Guy' : 'Girl'}</span>
+                  </button>
+                ))}
+              </div>
+            </Group>
+            <Group label="Skin">
+              <div class="swatches">{SKINS.map((c, i) => <button class="swatch" aria-label={`Skin ${i + 1}`} aria-pressed={look.skin === i} style={{ background: c }} onClick={() => set({ skin: i })} />)}</div>
+            </Group>
+          </>
+        )}
+        {part === 'hair' && (
+          <>
+            <Group label="Hair color">
+              <div class="swatches">{HAIR_COLORS.map((c, i) => <button class="swatch" aria-label={HAIR_COLOR_NAMES[i]} aria-pressed={look.hairColor === i} style={{ background: c }} onClick={() => set({ hairColor: i })} />)}</div>
+            </Group>
+            <Group label="Style">
+              <div class="pick-grid">
+                {HAIR_PICKS.map((h) => (
+                  <button class="pick" aria-pressed={look.hair === h} onClick={() => set({ hair: h })}>
+                    <img class="px" src={avatarThumb({ ...bare, hair: h }, 'head', 2)} alt="" />
+                    <span>{HAIR_NAMES[h]}</span>
+                  </button>
+                ))}
+              </div>
+            </Group>
+          </>
+        )}
+        {part === 'face' && (
+          <>
+            <Group label="Eyes">
+              <div class="swatches">{EYE_COLORS.map((c, i) => <button class="swatch" aria-label={`Eyes ${i + 1}`} aria-pressed={look.eyes === i} style={{ background: c }} onClick={() => set({ eyes: i })} />)}</div>
+            </Group>
+            <Group label="Extras">
+              <div class="row" style={{ gap: '8px' }}>
+                <button class="tab" aria-selected={!!look.freckles} onClick={() => set({ freckles: !look.freckles })}>Freckles</button>
+                <button class="tab" aria-selected={!!look.blush} onClick={() => set({ blush: !look.blush })}>Rosy cheeks</button>
+              </div>
+            </Group>
+          </>
+        )}
+        {part === 'clothes' && <ClothesPicker look={look} onChange={onChange} owned={owned} />}
+        {foot}
+      </div>
     </div>
   );
 }
@@ -147,11 +178,11 @@ export function Group({ label, children }: { label: string; children: preact.Com
 }
 
 /** The live preview above an editor; sticky keeps it in view while you scroll the options. */
-export function EditorStage({ look, sticky = false }: { look: AvatarLook; sticky?: boolean }) {
+export function EditorStage({ look, sticky = false, compact = false }: { look: AvatarLook; sticky?: boolean; compact?: boolean }) {
   return (
     <div class={`editor-stage ${sticky ? 'sticky' : ''}`}>
-      <AvatarPreview look={look} scale={sticky ? 5 : 7} />
-      {!sticky && <span class="tiny muted">Tap to turn around</span>}
+      <AvatarPreview look={look} scale={sticky || compact ? 3 : 4} />
+      {!sticky && !compact && <span class="tiny muted">Tap to turn around</span>}
     </div>
   );
 }

@@ -67,8 +67,10 @@ export class Actor {
     this.pos.set(w.x, 0, w.z);
     const { texture: t, cols } = buildAvatarAtlas(look);
     this.atlas = t; this.cols = cols;
-    const geo = new THREE.PlaneGeometry(FW / 16, FH / 16);
-    geo.translate(0, FH / 32 - 1 / 16, 0);
+    // HD frames are drawn at 32 px per unit: as wide as a tile's worth of the old art, taller.
+    // The bottom two rows are only outline, so the shoes sit on the floor.
+    const geo = new THREE.PlaneGeometry(FW / 32, FH / 32);
+    geo.translate(0, FH / 64 - 2 / 32, 0);
     // A little self-light keeps faces readable when the lamp is behind them at night.
     this.mat = new THREE.MeshLambertMaterial({ map: this.atlas, emissiveMap: this.atlas, emissive: '#FFFFFF', emissiveIntensity: 0.32, alphaTest: 0.5, side: THREE.DoubleSide });
     this.sprite = new THREE.Mesh(geo, this.mat);
@@ -215,7 +217,7 @@ export class Actor {
       const th = this.lieRot * Math.PI / 2;
       const fx = Math.sin(th), fz = Math.cos(th);
       this.sprite.rotation.set(0, view.yaw, 0.2, 'YXZ');
-      this.sprite.position.set(-fx * 0.86, this.elevation - 0.56 + this.offset.y, -fz * 0.86);
+      this.sprite.position.set(-fx * 0.86, this.elevation - 0.81 + this.offset.y, -fz * 0.86);
       this.sprite.castShadow = false;
       if (this.cover) { this.cover.position.set(0, this.elevation + 0.095, 0); this.cover.rotation.set(0, th, 0); }
       this.blob.visible = false;
@@ -233,7 +235,7 @@ export class Actor {
       const th = this.lieRot * Math.PI / 2;
       return this.group.position.clone().add(new THREE.Vector3(-Math.sin(th) * 0.86, this.elevation + 0.75, -Math.cos(th) * 0.86));
     }
-    return this.group.position.clone().add(new THREE.Vector3(0, this.elevation + 1.75 + this.offset.y, 0));
+    return this.group.position.clone().add(new THREE.Vector3(0, this.elevation + 2 + this.offset.y, 0));
   }
 
   dispose() {

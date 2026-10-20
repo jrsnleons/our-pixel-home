@@ -6,7 +6,7 @@ import { ownedClothes } from '../../data/clothes';
 import { DEFAULT_LOOK, HAIR_ORDER, type AvatarLook } from '../../engine/art/avatar';
 import { ActionError } from '../../net/backend';
 import { backend, phase, route, snap, toast } from '../../state/store';
-import { AvatarEditor, AvatarPreview, EditorStage } from '../AvatarEditor';
+import { AvatarEditor, AvatarPreview } from '../AvatarEditor';
 import { BootArt } from '../BootArt';
 import { Field, Icon } from '../kit';
 
@@ -44,9 +44,9 @@ export function Intro({ onDone }: { onDone: () => void }) {
         <div class="intro-art">
           {card.art === 'pair' && (
             <div class="pair-art" style={{ margin: 0 }}>
-              <AvatarPreview look={GUY} scale={4} />
+              <AvatarPreview look={GUY} scale={2} />
               <span class="pair-heart on"><Icon name="heart" size="l" /></span>
-              <AvatarPreview look={GIRL} scale={4} />
+              <AvatarPreview look={GIRL} scale={2} />
             </div>
           )}
           {card.art === 'play' && <div class="row intro-icons">{['play', 'work', 'store', 'decorate'].map((n) => <Icon name={n} size="l" />)}</div>}
@@ -136,7 +136,6 @@ export function MakeProfile({ suggested }: { suggested?: string | null }) {
       <p class="muted small" style={{ marginTop: 0 }}>Later, a clothes rack or mirror in your room lets you change.</p>
       <Field label="Your name"><input class="input" value={name} maxLength={24} onInput={(e) => setName(e.currentTarget.value)} placeholder="Name" autocomplete="given-name" /></Field>
       <div style={{ height: '14px' }} />
-      <EditorStage look={look} />
       <AvatarEditor look={look} onChange={setLook} owned={owned} />
       <div style={{ height: '16px' }} />
       <button class="btn block" disabled={busy} onClick={go}>That’s me</button>
@@ -170,9 +169,9 @@ export function Pair({ onDone }: { onDone: () => void }) {
   }, [joined]);
   const pairArt = meP && (
     <div class="pair-art">
-      <AvatarPreview look={meP.look} scale={4} />
+      <AvatarPreview look={meP.look} scale={2} />
       <span class={`pair-heart ${joined ? 'on' : ''}`}><Icon name="heart" size="l" /></span>
-      {them ? <AvatarPreview look={them.look} scale={4} /> : <div class="avatar-stage pbox soft ghost-partner"><Icon name="me" size="l" /></div>}
+      {them ? <AvatarPreview look={them.look} scale={2} /> : <div class="avatar-stage pbox soft ghost-partner"><Icon name="me" size="l" /></div>}
     </div>
   );
   if (couple && joined) {

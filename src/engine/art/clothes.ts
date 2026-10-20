@@ -5,7 +5,7 @@
 // Layout (guy): collar row 13 at x 7-12, torso rows 14-18 at x 6-13, hips rows 19-20, legs rows
 // 21-23 at x 6-8 and 11-13, shoes on row 24. Seated: hips x 5-14, knees row 21, shoes row 22.
 
-import { luminance, mix, ramp } from '../../core/color';
+import { hexToRgb, luminance, mix, ramp, type RGB } from '../../core/color';
 import { parseWorn, wearOf, type Piece, type Wear } from '../../data/clothes';
 import { px, type Ctx } from './pixel';
 
@@ -26,16 +26,22 @@ interface TopArt {
   /** Dresses and long coats draw their own skirt and have no bottoms. */
   skirt?: SkirtLen;
   detail?: (g: Ctx, v: View, C: R, f: Fit) => void;
+  /** Weave or finish for the HD texture pass (cotton when unset). */
+  fabric?: Fabric;
   /** Drawn after the head: high collars and hoods that sit over the neck. */
   collar?: (g: Ctx, v: View, C: R, dy: number) => void;
 }
 
 interface BottomArt {
   kind: 'pants' | 'wide' | 'shorts' | SkirtLen;
+  fabric?: Fabric;
   detail?: (g: Ctx, v: View, C: R, k: LegSpan) => void;
   /** Painted over the top (overall bibs). */
   over?: (g: Ctx, v: View, C: R) => void;
 }
+
+/** The weave the HD pass draws over a piece: ribs, twill, fuzz, sheen and so on. */
+export type Fabric = 'cotton' | 'knit' | 'denim' | 'fleece' | 'silk' | 'wool' | 'gloss' | 'quilt' | 'check';
 
 /** The two standing legs: left x, right x, and how much shorter each is mid-step. */
 interface LegSpan { l: number; r: number; offL: number; offR: number }
@@ -51,7 +57,7 @@ const TOPS: Record<string, TopArt> = {
     detail: (g, v, C) => { if (v === 'front') { px(g, C[1], 8, 13); px(g, C[1], 11, 13); px(g, C[1], 10, 16); } },
   },
   hoodie: {
-    sleeves: 'long',
+    fabric: 'fleece', sleeves: 'long',
     detail: (g, v, C) => {
       if (v === 'front') {
         px(g, C[1], 7, 13, 6, 1); px(g, '#F2EEE4', 8, 14, 1, 2); px(g, '#F2EEE4', 11, 14, 1, 2);
@@ -81,7 +87,7 @@ const TOPS: Record<string, TopArt> = {
     detail: (g, _v, C) => { for (let x = 6; x < 14; x += 2) px(g, C[1], x, 18); },
   },
   cardigan: {
-    sleeves: 'long',
+    fabric: 'knit', sleeves: 'long',
     detail: (g, v, C) => {
       if (v === 'front') {
         px(g, WHITE, 9, 13, 2, 5); px(g, C[1], 8, 13, 1, 5); px(g, '#FFFFFF', 8, 14); px(g, '#FFFFFF', 8, 16);
@@ -90,19 +96,19 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   knit: {
-    sleeves: 'long',
+    fabric: 'knit', sleeves: 'long',
     detail: (g, _v, C) => {
       for (const x of [7, 10, 12]) for (let y = 14; y < 18; y++) px(g, (y + x) % 2 ? C[1] : C[3], x, y);
       px(g, C[1], 6, 18, 8, 1);
     },
   },
   turtleneck: {
-    sleeves: 'long', neck: 'closed',
+    fabric: 'knit', sleeves: 'long', neck: 'closed',
     detail: (g, _v, C) => { px(g, C[1], 10, 16, 1, 2); },
     collar: (g, _v, C, dy) => { px(g, C[2], 8, 12 + dy, 4, 1); px(g, C[3], 8, 12 + dy); px(g, C[1], 11, 12 + dy); },
   },
   flannel: {
-    sleeves: 'long',
+    fabric: 'check', sleeves: 'long',
     detail: (g, v, C) => {
       for (let y = 13; y < 19; y++) for (let x = 6; x < 14; x++) {
         if (x % 3 === 0 && y % 3 === 0) px(g, C[0], x, y);
@@ -112,7 +118,7 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   varsity: {
-    sleeves: 'long', sleeve: '#F2EEE4',
+    fabric: 'wool', sleeves: 'long', sleeve: '#F2EEE4',
     detail: (g, v, C) => {
       px(g, '#F2EEE4', 6, 18, 8, 1); px(g, C[0], 6, 17, 8, 1);
       if (v === 'front') {
@@ -123,7 +129,7 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   denim_jacket: {
-    sleeves: 'long',
+    fabric: 'denim', sleeves: 'long',
     detail: (g, v, C) => {
       px(g, C[1], 6, 18, 8, 1);
       if (v === 'front') {
@@ -133,7 +139,7 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   puffer: {
-    sleeves: 'long', neck: 'closed',
+    fabric: 'quilt', sleeves: 'long', neck: 'closed',
     detail: (g, v, C) => {
       for (const y of [14, 16]) px(g, C[3], 6, y, 8, 1);
       for (const y of [15, 17]) px(g, C[1], 6, y, 8, 1);
@@ -142,7 +148,7 @@ const TOPS: Record<string, TopArt> = {
     collar: (g, _v, C, dy) => { px(g, C[2], 7, 12 + dy, 6, 1); px(g, C[3], 7, 12 + dy, 2, 1); px(g, C[1], 12, 12 + dy); },
   },
   blouse: {
-    sleeves: 'long',
+    fabric: 'silk', sleeves: 'long',
     detail: (g, v, C) => {
       if (v === 'front') {
         for (let x = 7; x < 13; x++) px(g, x % 2 ? C[3] : C[1], x, 13);
@@ -160,7 +166,7 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   vest: {
-    sleeves: 'long', sleeve: '#FAF6EE',
+    fabric: 'knit', sleeves: 'long', sleeve: '#FAF6EE',
     detail: (g, v, C) => {
       for (let y = 14; y < 18; y++) for (let x = 6; x < 14; x++) {
         if ((x + y) % 4 === 0) px(g, C[1], x, y);
@@ -178,7 +184,7 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   blazer: {
-    sleeves: 'long',
+    fabric: 'wool', sleeves: 'long',
     detail: (g, v, C) => {
       if (v === 'front') {
         px(g, '#FAF6EE', 9, 13, 2, 3); px(g, C[0], 8, 13, 1, 3); px(g, C[0], 11, 13, 1, 3);
@@ -217,7 +223,7 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   maxi: {
-    sleeves: 'short', skirt: 'maxi',
+    fabric: 'silk', sleeves: 'short', skirt: 'maxi',
     detail: (g, v, C) => {
       const fl = isLight(C[2]) ? ['#E5869A', '#F2C230'] : ['#FFFFFF', '#F2C230'];
       for (let y = 14; y < 24; y++) for (let x = 4; x < 16; x++) if ((x * 3 + y * 5) % 7 === 0 && y !== 18) px(g, fl[(x + y) % 2], x, y);
@@ -226,11 +232,11 @@ const TOPS: Record<string, TopArt> = {
     },
   },
   slip_dress: {
-    sleeves: 'none', neck: 'strap', skirt: 'midi',
+    fabric: 'silk', sleeves: 'none', neck: 'strap', skirt: 'midi',
     detail: (g, _v, C) => { px(g, C[4], 7, 15, 1, 7); px(g, C[3], 8, 19, 1, 3); px(g, C[1], 6, 18, 8, 1); },
   },
   raincoat: {
-    sleeves: 'long', skirt: 'short',
+    fabric: 'gloss', sleeves: 'long', skirt: 'short',
     detail: (g, v, C) => {
       if (v === 'front') { for (let y = 14; y < 21; y += 2) px(g, C[0], 10, y); px(g, C[1], 9, 13, 1, 9); px(g, C[3], 6, 17, 2, 1); px(g, C[3], 12, 17, 2, 1); }
       else px(g, C[1], 6, 13, 8, 2);
@@ -241,16 +247,16 @@ const TOPS: Record<string, TopArt> = {
 // ---------- Bottoms ----------
 
 const BOTTOMS: Record<string, BottomArt> = {
-  jeans: { kind: 'pants', detail: (g, v, C, k) => { px(g, C[3], k.l, 23 + k.offL, 3, 1); px(g, C[3], k.r, 23 + k.offR, 3, 1); if (v === 'front') px(g, C[1], 9, 19, 1, 2); } },
-  joggers: { kind: 'pants', detail: (g, v, C, k) => { px(g, C[1], k.l, 23 + k.offL, 3, 1); px(g, C[1], k.r, 23 + k.offR, 3, 1); px(g, C[1], 6, 19, 8, 1); if (v === 'front') { px(g, '#FFFFFF', 9, 19); px(g, '#FFFFFF', 10, 20); } } },
-  wide_jeans: { kind: 'wide', detail: (g, _v, C) => { px(g, C[3], 7, 19, 1, 2); } },
+  jeans: { fabric: 'denim', kind: 'pants', detail: (g, v, C, k) => { px(g, C[3], k.l, 23 + k.offL, 3, 1); px(g, C[3], k.r, 23 + k.offR, 3, 1); if (v === 'front') px(g, C[1], 9, 19, 1, 2); } },
+  joggers: { fabric: 'fleece', kind: 'pants', detail: (g, v, C, k) => { px(g, C[1], k.l, 23 + k.offL, 3, 1); px(g, C[1], k.r, 23 + k.offR, 3, 1); px(g, C[1], 6, 19, 8, 1); if (v === 'front') { px(g, '#FFFFFF', 9, 19); px(g, '#FFFFFF', 10, 20); } } },
+  wide_jeans: { fabric: 'denim', kind: 'wide', detail: (g, _v, C) => { px(g, C[3], 7, 19, 1, 2); } },
   cargo: { kind: 'pants', detail: (g, _v, C, k) => { px(g, C[1], k.l, 21, 1, 2); px(g, C[3], k.l, 21); px(g, C[0], k.r + 2, 21, 1, 2); px(g, C[1], 6, 19, 8, 1); } },
-  slacks: { kind: 'pants', detail: (g, v, C, k) => { px(g, C[3], k.l + 1, 21, 1, 3 + k.offL); px(g, C[3], k.r + 1, 21, 1, 3 + k.offR); px(g, C[0], 6, 19, 8, 1); if (v === 'front') px(g, '#C8A040', 9, 19); } },
-  shorts: { kind: 'shorts', detail: (g, _v, C, k) => { px(g, C[3], k.l, 21, 3, 1); px(g, C[3], k.r, 21, 3, 1); } },
-  mini_skirt: { kind: 'mini', detail: (g, _v, C) => { for (const x of [6, 8, 10, 12]) px(g, C[1], x, 20, 1, 2); px(g, C[1], 6, 19, 8, 1); } },
-  midi_skirt: { kind: 'midi', detail: (g, _v, C) => { px(g, C[1], 8, 20, 1, 2); px(g, C[1], 11, 20, 1, 2); } },
+  slacks: { fabric: 'wool', kind: 'pants', detail: (g, v, C, k) => { px(g, C[3], k.l + 1, 21, 1, 3 + k.offL); px(g, C[3], k.r + 1, 21, 1, 3 + k.offR); px(g, C[0], 6, 19, 8, 1); if (v === 'front') px(g, '#C8A040', 9, 19); } },
+  shorts: { fabric: 'denim', kind: 'shorts', detail: (g, _v, C, k) => { px(g, C[3], k.l, 21, 3, 1); px(g, C[3], k.r, 21, 3, 1); } },
+  mini_skirt: { fabric: 'wool', kind: 'mini', detail: (g, _v, C) => { for (const x of [6, 8, 10, 12]) px(g, C[1], x, 20, 1, 2); px(g, C[1], 6, 19, 8, 1); } },
+  midi_skirt: { fabric: 'silk', kind: 'midi', detail: (g, _v, C) => { px(g, C[1], 8, 20, 1, 2); px(g, C[1], 11, 20, 1, 2); } },
   overalls: {
-    kind: 'pants',
+    fabric: 'denim', kind: 'pants',
     detail: (g, v, C) => { if (v === 'front') px(g, C[1], 6, 20, 2, 1); },
     over: (g, v, C) => {
       if (v === 'front') { px(g, C[2], 8, 15, 4, 4); px(g, C[2], 7, 13, 1, 2); px(g, C[2], 12, 13, 1, 2); px(g, '#F2D56A', 7, 15); px(g, '#F2D56A', 12, 15); px(g, C[1], 9, 16, 2, 1); px(g, C[3], 8, 15); }
@@ -506,4 +512,176 @@ export function paintHeadwear(g: Ctx, d: Dressed, v: View, dy: number) {
       px(g, C[0], 4, 3 + dy, 12, 1);
       break;
   }
+}
+
+// ---------- HD detail ----------
+// After the body layer is doubled to the HD frame (40 wide, x = 2 * small x), this pass adds
+// what the small frame has no room for: the weave of each fabric, seams, stitching, buttons,
+// pockets, pleats and soles. Every mark is only drawn over the piece's own colors, so skin,
+// bags and prints underneath are never painted over.
+
+/** Small-to-HD row mapping for this frame (includes the body's bob). */
+type RowMap = (smallY: number) => number;
+
+const noise = (x: number, y: number) => (((x * 73856093) ^ (y * 19349663)) >>> 0) % 997;
+
+export function paintFabricHD(g: Ctx, d: Dressed, f: Fit, v: View, Y: RowMap) {
+  const W = 40, H = 60;
+  const img = g.getImageData(0, 0, W, H);
+  const data = img.data;
+  const t = d.top.art;
+  const T = t.base ? ramp(t.base) : d.top.C;
+  const L = t.skirt ? d.top.C : d.bottom?.C ?? T;
+  const S = d.shoes.C;
+  const rgb = (r: R) => r.map(hexToRgb);
+  const Trgb = rgb(T), Crgb = rgb(d.top.C), Lrgb = rgb(L), Srgb = rgb(S);
+  /** Which tone of ramp r the pixel at (x, y) is, or -1. */
+  const tone = (x: number, y: number, r: RGB[]) => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return -1;
+    const i = (y * W + x) * 4;
+    if (data[i + 3] === 0) return -1;
+    for (let k = 0; k < r.length; k++) if (data[i] === r[k][0] && data[i + 1] === r[k][1] && data[i + 2] === r[k][2]) return k;
+    return -1;
+  };
+  const put = (x: number, y: number, c: string) => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    const i = (y * W + x) * 4, [r, gg, b] = hexToRgb(c);
+    data[i] = r; data[i + 1] = gg; data[i + 2] = b;
+  };
+  /** Paint c at (x, y) only where the pixel is one of ramp r's tones. */
+  const on = (r: RGB[], x: number, y: number, c: string) => { if (tone(x, y, r) >= 0) put(x, y, c); };
+  const sitting = f.legs === 'sit';
+  const waist = Y(19);
+  const dressed = !!t.skirt;
+
+  // 1. Weave, over the base and lit tones of each piece.
+  const weave = (fab: Fabric, C: R, r: RGB[], y0: number, y1: number) => {
+    for (let y = y0; y < y1; y++) for (let x = 0; x < W; x++) {
+      const k = tone(x, y, r);
+      if (k < 1 || k > 3) continue;
+      const n = noise(x, y);
+      const up = C[Math.min(4, k + 1)], down = C[k - 1];
+      switch (fab) {
+        case 'knit':
+          if (x % 3 === 1) put(x, y, mix(C[k], down, 0.45));
+          else if (x % 3 === 2 && y % 2 === 0) put(x, y, mix(C[k], up, 0.3));
+          break;
+        case 'denim':
+          if ((x + y) % 4 === 0) put(x, y, mix(C[k], luminance(C[2]) > 0.6 ? down : up, 0.35));
+          break;
+        case 'fleece':
+          if (n % 7 === 0) put(x, y, mix(C[k], up, 0.4));
+          break;
+        case 'silk':
+          if ((x * 2 + y) % 13 < 2 && k >= 2) put(x, y, mix(C[k], C[4], 0.45));
+          break;
+        case 'wool':
+          if (n % 5 === 0) put(x, y, mix(C[k], down, 0.3));
+          else if (n % 5 === 1) put(x, y, mix(C[k], up, 0.25));
+          break;
+        case 'gloss':
+          if (k >= 2 && (x === 14 || x === 15) && y % 7 < 4) put(x, y, mix(C[k], '#FFFFFF', 0.4));
+          break;
+        case 'quilt':
+          if (k === 3 && x % 6 === 2) put(x, y, C[4]);
+          break;
+        case 'check':
+          if ((x + y) % 2 === 0) put(x, y, mix(C[k], up, 0.18));
+          break;
+      }
+    }
+  };
+  const topEnd = dressed ? H : waist;
+  weave(t.fabric ?? 'cotton', T, Trgb, 0, topEnd);
+  if (t.base) weave(t.fabric ?? 'cotton', d.top.C, Crgb, 0, topEnd);
+  if (!dressed && d.bottom) weave(d.bottom.art.fabric ?? 'cotton', L, Lrgb, waist, H);
+
+  const key = d.top.piece.key;
+  const crease = mix(T[2], T[1], 0.6);
+  if (v === 'front') {
+    // 2. Folds where the sleeves meet the body, and a soft drape under the chest.
+    const c0 = Y(14);
+    for (const [x, dx] of [[13, 1], [26, -1]] as const) { on(Trgb, x, c0 + 2, crease); on(Trgb, x + dx, c0 + 3, crease); on(Trgb, x + dx * 2, c0 + 5, crease); }
+    // 3. Fronts: plackets and buttons, pockets, zips.
+    const button = (x: number, y: number, c: string) => { on(Trgb, x, y, c); on(Crgb, x, y, c); on(Trgb, x, y + 1, mix(c, '#24161A', 0.5)); on(Crgb, x, y + 1, mix(c, '#24161A', 0.5)); };
+    if (['shirt', 'flannel', 'pj_top', 'blouse', 'raincoat'].includes(key)) {
+      for (let y = Y(14); y < (dressed ? Y(21) : Y(18) + 1); y++) { on(Trgb, 19, y, mix(T[2], T[1], 0.5)); on(Crgb, 19, y, mix(d.top.C[2], d.top.C[1], 0.5)); }
+      for (let y = Y(14) + 2; y < (dressed ? Y(21) : Y(18)); y += 4) button(20, y, key === 'raincoat' ? '#F2EEE4' : '#FFFFFF');
+    }
+    if (key === 'cardigan') for (let y = Y(14) + 1; y < Y(18); y += 4) { put(16, y, '#FFFFFF'); put(16, y + 1, mix(T[1], '#FFFFFF', 0.3)); }
+    if (key === 'hoodie') {
+      // Kangaroo pocket and the drawstring tips.
+      const py = Y(16) + 1;
+      for (let x = 15; x <= 24; x++) on(Trgb, x, py, T[1]);
+      for (let k = 1; k <= 4; k++) { on(Trgb, 15 - (k >> 1), py + k, T[1]); on(Trgb, 24 + (k >> 1), py + k, T[1]); }
+      put(16, Y(15) + 1, '#C8C2B8'); put(22, Y(15) + 1, '#C8C2B8');
+    }
+    if (key === 'denim_jacket') {
+      for (let x = 13; x <= 26; x += 2) on(Trgb, x, Y(18), '#D9A04A');
+      for (const x0 of [14, 22]) { for (let x = x0; x < x0 + 4; x += 2) on(Trgb, x, Y(15) + 2, '#D9A04A'); }
+    }
+    if (key === 'blazer') {
+      for (let k = 0; k < 4; k++) { on(Trgb, 17 - k, Y(14) + k * 2, T[0]); on(Trgb, 22 + k, Y(14) + k * 2, T[0]); }
+      for (let x = 22; x <= 25; x++) on(Trgb, x, Y(17), T[0]);
+      button(19, Y(17) - 1, mix(T[2], '#24161A', 0.5));
+    }
+    if (key === 'puffer') for (let y = Y(14); y < Y(18) + 2; y += 2) on(Trgb, 21, y, '#D8D4DC');
+    if (key === 'varsity') for (let y = Y(14) + 1; y < Y(18); y += 4) put(21, y, '#F2EEE4');
+    if (['tee', 'heart_tee', 'couple_tee', 'rugby', 'sundress', 'maxi'].includes(key)) {
+      // Rib along the neckline.
+      for (let x = 15; x <= 24; x++) on(Trgb, x, Y(13) + 1, mix(T[2], T[1], 0.45));
+    }
+  }
+
+  // 4. Bottoms: waistband, fly, pockets, stitching, pleats, cuffs.
+  const bk = d.bottom && !dressed ? Object.entries(BOTTOMS).find(([, a]) => a === d.bottom!.art)?.[0] : null;
+  const band = mix(L[1], L[0], 0.3);
+  if (bk && !sitting) {
+    const kind = d.bottom!.art.kind;
+    const pantsLike = kind === 'pants' || kind === 'wide' || kind === 'shorts';
+    if (pantsLike) for (let x = 11; x <= 28; x++) on(Lrgb, x, waist + 2, band);
+    const stitch = mix(L[2], '#E0A848', 0.55);
+    if (bk === 'jeans' || bk === 'wide_jeans' || bk === 'shorts' || bk === 'overalls') {
+      if (v === 'front') {
+        for (let y = waist + 3; y < Y(21); y++) on(Lrgb, 20, y, L[1]);
+        on(Lrgb, 20, waist + 1, '#C8A040');
+        // Scooped front pockets.
+        for (let k = 0; k < 3; k++) { on(Lrgb, 14 + k, waist + 3 + k, L[1]); on(Lrgb, 25 - k, waist + 3 + k, L[1]); }
+      } else {
+        for (const x0 of [13, 22]) {
+          for (let x = x0; x < x0 + 5; x++) on(Lrgb, x, waist + 3, L[1]);
+          for (let y = waist + 3; y < waist + 7; y++) { on(Lrgb, x0, y, L[1]); on(Lrgb, x0 + 4, y, L[1]); }
+          for (let x = x0 + 1; x < x0 + 4; x += 2) on(Lrgb, x, waist + 5, stitch);
+        }
+      }
+      // Gold side-seam stitching down the outside of each leg.
+      for (let y = Y(21); y < H; y += 2) { on(Lrgb, 12, y, stitch); on(Lrgb, 27, y, stitch); }
+    }
+    if (bk === 'cargo') for (const x0 of [12, 25]) {
+      for (let x = x0; x < x0 + 3; x++) on(Lrgb, x, Y(21) + 1, L[0]);
+      for (let y = Y(21) + 2; y < Y(21) + 6; y++) on(Lrgb, x0 + 1, y, L[1]);
+    }
+    if (bk === 'slacks') { for (let x = 11; x <= 28; x++) on(Lrgb, x, waist + 1, '#3A2A2A'); on(Lrgb, 19, waist + 1, '#C8A040'); on(Lrgb, 20, waist + 1, '#C8A040'); }
+    if (bk === 'joggers') for (let x = 10; x < 30; x++) for (let y = Y(23) - 2; y < Y(24); y++) if (x % 2 === 0) on(Lrgb, x, y, L[1]);
+    if (bk === 'mini_skirt' || bk === 'midi_skirt') {
+      for (let x = 12; x <= 28; x += 3) for (let y = waist + 3; y < H; y++) if ((y + x) % 5 !== 0) on(Lrgb, x, y, mix(L[2], L[1], 0.55));
+    }
+  }
+  if (dressed && !sitting) {
+    // Gathers in the skirt of a dress or the drape of a coat.
+    for (let x = 11; x <= 29; x += 4) for (let y = waist + 2; y < H; y++) on(Crgb, x, y, mix(d.top.C[2], d.top.C[1], 0.5));
+  }
+
+  // 5. Shoes: a sole along the bottom edge of each shoe and laces on sneakers.
+  const soleLight = S[2] && !isLight(S[2]) && (d.shoes.key === 'sneakers' || d.shoes.key === 'chunky');
+  for (let x = 0; x < W; x++) {
+    let bottom = -1;
+    for (let y = H - 1; y >= Y(20); y--) if (tone(x, y, Srgb) >= 0) { bottom = y; break; }
+    if (bottom < 0) continue;
+    put(x, bottom, soleLight ? '#F2EEE4' : mix(S[0], '#24161A', 0.4));
+    if (d.shoes.key === 'sneakers' && v === 'front' && x % 2 === 1 && tone(x, bottom - 1, Srgb) >= 2) put(x, bottom - 1, mix(S[2], '#FFFFFF', 0.6));
+    if ((d.shoes.key === 'loafers' || d.shoes.key === 'maryjanes' || d.shoes.key === 'boots') && tone(x, bottom - 1, Srgb) === 4) put(x, bottom - 1, '#FFFFFF');
+  }
+
+  g.putImageData(img, 0, 0);
 }

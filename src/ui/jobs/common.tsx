@@ -4,7 +4,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { randomWear } from '../../data/clothes';
 import { SHIFT } from '../../data/economy';
-import { DEFAULT_LOOK, FH, FW, HAIR_STYLES, paintAvatarFrame, type AvatarLook } from '../../engine/art/avatar';
+import { DEFAULT_LOOK, HAIR_STYLES, paintAvatarSmall, SH, SW, type AvatarLook } from '../../engine/art/avatar';
 import type { CafeEvent, LiveMsg } from '../../net/types';
 import { backend } from '../../state/store';
 import { Icon } from '../kit';
@@ -26,8 +26,8 @@ export function avatarSprite(look: AvatarLook, frame: string, view: 'front' | 'b
   const k = JSON.stringify(look) + frame + view;
   let c = spriteCache.get(k);
   if (!c) {
-    c = document.createElement('canvas'); c.width = FW; c.height = FH;
-    paintAvatarFrame(c.getContext('2d')!, 0, 0, { look, frame, view });
+    c = document.createElement('canvas'); c.width = SW; c.height = SH;
+    paintAvatarSmall(c.getContext('2d')!, 0, 0, { look, frame, view });
     if (spriteCache.size > 120) spriteCache.clear();
     spriteCache.set(k, c);
   }
