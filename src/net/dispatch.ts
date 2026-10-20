@@ -24,6 +24,10 @@ export function dispatch<K extends RpcName>(c: R.Ctx, name: K, args: Rpcs[K], op
     case 'store': R.store(c, str((a as Rpcs['store']).pid)); return { coins: 0 };
     case 'set_style': R.setStyle(c, obj((a as Rpcs['set_style']).style)); return { coins: 0 };
     case 'set_look': R.setLook(c, obj((a as Rpcs['set_look']).look)); return { coins: 0 };
+    case 'buy_clothes': { const p = a as Rpcs['buy_clothes']; R.buyClothes(c, str(p.key), int(p.color)); return { coins: 0 }; }
+    case 'save_look': { const p = a as Rpcs['save_look']; R.saveLook(c, int(p.index), p.wear == null ? null : obj(p.wear)); return { coins: 0 }; }
+    case 'gift_look': R.giftLook(c, obj((a as Rpcs['gift_look']).wear)); return { coins: 0 };
+    case 'answer_gift': R.answerGift(c, (a as Rpcs['answer_gift']).accept === true); return { coins: 0 };
     case 'set_profile': R.setProfile(c, a as Rpcs['set_profile']); return { coins: 0 };
     case 'set_couple': R.setCouple(c, a as Rpcs['set_couple']); return { coins: 0 };
     case 'placement_data': { const p = a as Rpcs['placement_data']; R.setPlacementData(c, str(p.pid), obj(p.patch)); return { coins: 0 }; }

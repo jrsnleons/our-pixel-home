@@ -2,6 +2,7 @@
 // (the on-device preview with a simulated partner, used when no Supabase keys are set).
 
 import type { Surface } from '../core/grid';
+import type { Wear } from '../data/clothes';
 import type { AvatarLook } from '../engine/art/avatar';
 import type { GameKind, LiveMsg, Patch, Profile, QuestKey, RoomStyleRow, Snapshot } from './types';
 
@@ -12,6 +13,10 @@ export interface Rpcs {
   store: { pid: string };
   set_style: { style: RoomStyleRow };
   set_look: { look: AvatarLook };
+  buy_clothes: { key: string; color: number };
+  save_look: { index: number; wear: Wear | null };
+  gift_look: { wear: Wear };
+  answer_gift: { accept: boolean };
   set_profile: { name?: string; city?: string | null; tz?: string; tourDone?: boolean };
   set_couple: { since?: string | null; nextVisit?: string | null };
   placement_data: { pid: string; patch: Record<string, unknown> };

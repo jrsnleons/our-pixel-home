@@ -7,6 +7,8 @@
 
 import * as THREE from 'three';
 import { mix, ramp, shade } from '../../core/color';
+import { STARTER_WEAR, type Wear } from '../../data/clothes';
+import { dress, paintBag, paintBody, paintCollar, paintHeadwear, sleeveOf } from './clothes';
 import { canvas, outline, px, texture, type Ctx } from './pixel';
 
 export const FW = 20, FH = 26;
@@ -19,15 +21,18 @@ export interface AvatarLook {
   skin: number;
   hair: string;
   hairColor: number;
-  outfit: string;
-  accessory: string;
+  /** What they have on, slot by slot (see data/clothes.ts). */
+  wear: Wear;
+  /** Looks saved before separate pieces had one outfit and one accessory; read through wearOf. */
+  outfit?: string;
+  accessory?: string;
   eyes: number;
   freckles: boolean;
   /** Rosy cheeks all the time, not just when happy. */
   blush: boolean;
 }
 
-export const DEFAULT_LOOK: AvatarLook = { body: 'guy', skin: 1, hair: 'short', hairColor: 1, outfit: 'fit_tee', accessory: 'acc_none', eyes: 0, freckles: false, blush: false };
+export const DEFAULT_LOOK: AvatarLook = { body: 'guy', skin: 1, hair: 'short', hairColor: 1, wear: STARTER_WEAR, eyes: 0, freckles: false, blush: false };
 
 export const SKINS = ['#FBE3CC', '#F3C9A2', '#E2AC7E', '#C78B5C', '#9C6642', '#6F4631'];
 export const HAIR_COLORS = ['#2B2026', '#4A2E1F', '#7A4A2E', '#A4512E', '#D9A949', '#B8B2AA', '#E890A8', '#8E7AD0'];
@@ -508,101 +513,6 @@ const HAIR: Record<string, HairStyle> = {
   },
 };
 
-// ---------- Outfits ----------
-interface Outfit {
-  top: string;
-  sleeves: 'short' | 'long';
-  sleeve?: string;
-  bottom: string;
-  bottomKind: 'pants' | 'shorts' | 'skirt' | 'dress';
-  shoes: string;
-  detail?: (g: Ctx, view: 'front' | 'back', c: OutfitColors) => void;
-}
-interface OutfitColors { top: string[]; bottom: string[] }
-
-const OUTFITS: Record<string, Outfit> = {
-  fit_tee: {
-    top: '#F2EEE4', sleeves: 'short', bottom: '#4A6A9A', bottomKind: 'pants', shoes: '#5A3A2A',
-    detail: (g, view, c) => { if (view === 'front') { px(g, c.top[0], 9, 13, 2, 1); px(g, c.top[1], 10, 16); } },
-  },
-  fit_hoodie: {
-    top: '#8A9AB5', sleeves: 'long', bottom: '#3E3E4E', bottomKind: 'pants', shoes: '#E8E4DA',
-    detail: (g, view, c) => {
-      if (view === 'front') {
-        px(g, c.top[1], 7, 13, 6, 1); px(g, '#F2EEE4', 8, 14, 1, 2); px(g, '#F2EEE4', 11, 14, 1, 2);
-        px(g, c.top[1], 7, 17, 6, 1); px(g, c.top[0], 7, 18, 6, 1);
-      } else { px(g, c.top[1], 6, 13, 8, 2); px(g, c.top[0], 7, 15, 6, 1); }
-    },
-  },
-  fit_sweater: {
-    top: '#C9603E', sleeves: 'long', bottom: '#5A4A3E', bottomKind: 'pants', shoes: '#3A2A22',
-    detail: (g, _view, c) => {
-      for (const x of [7, 10, 12]) for (let y = 14; y < 19; y++) px(g, (y + x) % 2 ? c.top[1] : c.top[3], x, y);
-      px(g, c.top[1], 6, 18, 8, 1);
-    },
-  },
-  fit_overalls: {
-    top: '#F2E6D0', sleeves: 'short', bottom: '#5B7DB1', bottomKind: 'pants', shoes: '#8A3A2A',
-    detail: (g, view, c) => {
-      for (let x = 6; x < 14; x++) if (x % 2) px(g, '#D9604A', x, 14);
-      if (view === 'front') { px(g, c.bottom[2], 8, 15, 4, 4); px(g, c.bottom[2], 7, 13, 1, 2); px(g, c.bottom[2], 12, 13, 1, 2); px(g, '#F2D56A', 7, 15); px(g, '#F2D56A', 12, 15); px(g, c.bottom[1], 9, 16, 2, 1); }
-      else { px(g, c.bottom[2], 7, 13, 1, 6); px(g, c.bottom[2], 12, 13, 1, 6); px(g, c.bottom[2], 6, 18, 8, 1); }
-    },
-  },
-  fit_dress: {
-    top: '#F2A7C3', sleeves: 'short', bottom: '#F2A7C3', bottomKind: 'dress', shoes: '#F2EEE4',
-    detail: (g, view, c) => { if (view === 'front') { px(g, '#FFFFFF', 8, 13, 4, 1); px(g, c.top[3], 9, 15); px(g, c.top[3], 9, 17); } px(g, c.top[1], 6, 18, 8, 1); for (let x = 5; x < 15; x += 2) px(g, c.top[4], x, 21); },
-  },
-  fit_flannel: {
-    top: '#B83A32', sleeves: 'long', bottom: '#3E4E6A', bottomKind: 'pants', shoes: '#5A3A22',
-    detail: (g, view, c) => {
-      for (let y = 13; y < 19; y++) for (let x = 6; x < 14; x++) {
-        if (x % 3 === 0 && y % 3 === 0) px(g, c.top[0], x, y);
-        else if (x % 3 === 0 || y % 3 === 0) px(g, c.top[1], x, y);
-      }
-      if (view === 'front') { px(g, '#F2EEE4', 9, 13, 2, 1); for (let y = 14; y < 19; y += 2) px(g, '#F2EEE4', 10, y); }
-    },
-  },
-  fit_pajamas: {
-    top: '#A8C4E8', sleeves: 'long', bottom: '#A8C4E8', bottomKind: 'pants', shoes: '#F2D5D5',
-    detail: (g, view, c) => {
-      if (view === 'front') { px(g, '#FFFFFF', 8, 13, 1, 6); px(g, '#FFFFFF', 11, 13, 1, 1); px(g, c.top[1], 9, 15); px(g, c.top[1], 9, 17); }
-      for (let y = 14; y < 19; y += 3) for (let x = 7; x < 14; x += 4) px(g, '#FFF2B0', x, y);
-      px(g, '#FFFFFF', 6, 23, 3, 1); px(g, '#FFFFFF', 11, 23, 3, 1);
-    },
-  },
-  fit_raincoat: {
-    top: '#F2C230', sleeves: 'long', bottom: '#F2C230', bottomKind: 'dress', shoes: '#C83A32',
-    detail: (g, view, c) => {
-      if (view === 'front') { for (let y = 14; y < 21; y += 2) px(g, c.top[0], 10, y); px(g, c.top[1], 9, 13, 1, 9); px(g, c.top[3], 6, 17, 2, 1); px(g, c.top[3], 12, 17, 2, 1); }
-      else { px(g, c.top[1], 6, 13, 8, 2); }
-    },
-  },
-  fit_apron: {
-    top: '#F2EEE4', sleeves: 'long', bottom: '#3A3A44', bottomKind: 'pants', shoes: '#2A2A30',
-    detail: (g, view, c) => {
-      if (view === 'front') { px(g, '#4E6A5A', 7, 14, 6, 7); px(g, '#3E5A4A', 7, 14, 6, 1); px(g, '#4E6A5A', 8, 13, 4, 1); px(g, '#E8C878', 9, 17, 2, 1); }
-      else { px(g, '#4E6A5A', 6, 18, 8, 1); px(g, '#4E6A5A', 9, 19, 2, 1); px(g, '#4E6A5A', 7, 13, 1, 5); px(g, '#4E6A5A', 12, 13, 1, 5); }
-      void c;
-    },
-  },
-  fit_sunday: {
-    top: '#FFFFFF', sleeves: 'long', sleeve: '#5A6A8A', bottom: '#4A5068', bottomKind: 'pants', shoes: '#2A1A14',
-    detail: (g, view) => {
-      if (view === 'front') { px(g, '#5A6A8A', 6, 13, 2, 6); px(g, '#5A6A8A', 12, 13, 2, 6); px(g, '#E8E4F0', 8, 13, 1, 1); px(g, '#E8E4F0', 11, 13, 1, 1); px(g, '#C8A040', 7, 15); px(g, '#C8A040', 7, 17); }
-      else px(g, '#5A6A8A', 6, 13, 8, 6);
-    },
-  },
-  fit_formal: {
-    top: '#2E3448', sleeves: 'long', bottom: '#2E3448', bottomKind: 'pants', shoes: '#1A1414',
-    detail: (g, view) => {
-      if (view === 'front') { px(g, '#F2EEE4', 9, 13, 2, 4); px(g, '#B8303A', 9, 14, 1, 3); px(g, '#3E465E', 8, 13, 1, 4); px(g, '#3E465E', 11, 13, 1, 4); px(g, '#F2A7C3', 7, 14); px(g, '#FFFFFF', 7, 13); }
-    },
-  },
-};
-
-export const OUTFIT_KEYS = Object.keys(OUTFITS);
-
 // ---------- Painting ----------
 
 function drawHairMap(g: Ctx, rows: string[] | undefined, oy: number, hair: string[]) {
@@ -613,10 +523,11 @@ function drawHairMap(g: Ctx, rows: string[] | undefined, oy: number, hair: strin
   });
 }
 
-function drawArm(g: Ctx, sx: number, sy: number, arm: Arm, sleeve: string[], skin: string[], short: boolean) {
+/** bare: how far along the arm the sleeve ends (1 long, 0.42 short, 0 sleeveless). */
+function drawArm(g: Ctx, sx: number, sy: number, arm: Arm, sleeve: string[], skin: string[], bare: number) {
   const [hx, hy] = arm.hand;
   const pts: [number, number][] = arm.elbow ? [[sx, sy], arm.elbow, [hx, hy]] : [[sx, sy], [hx, hy]];
-  // Sleeve along the full arm, then skin for forearm (short sleeves) and the hand.
+  // Sleeve from the shoulder, then skin for the bare part of the arm and the hand.
   for (let i = 0; i < pts.length - 1; i++) {
     const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
     const steps = Math.max(Math.abs(bx - ax), Math.abs(by - ay), 1);
@@ -624,9 +535,9 @@ function drawArm(g: Ctx, sx: number, sy: number, arm: Arm, sleeve: string[], ski
       const t = s / steps;
       const x = Math.round(ax + (bx - ax) * t), y = Math.round(ay + (by - ay) * t);
       const along = (i + t) / (pts.length - 1);
-      const c = short && along > 0.42 ? skin[2] : sleeve[2];
-      px(g, c, x, y, 2, 2);
-      px(g, short && along > 0.42 ? skin[1] : sleeve[1], x + 1, y + 1);
+      const off = along > bare;
+      px(g, off ? skin[2] : sleeve[2], x, y, 2, 2);
+      px(g, off ? skin[1] : sleeve[1], x + 1, y + 1);
     }
   }
   px(g, skin[2], hx, hy, 2, 2);
@@ -699,108 +610,6 @@ function drawHead(g: Ctx, skin: string[], dy: number, view: 'front' | 'back') {
   px(g, skin[1], 8, 12 + dy, 4, 1);
 }
 
-function drawBody(g: Ctx, o: Outfit, oc: OutfitColors, skin: string[], legs: Legs, view: 'front' | 'back') {
-  const T = oc.top, B = oc.bottom;
-  const shoe = ramp(o.shoes);
-  const sitting = legs === 'sit';
-  // Torso: rows 13-18.
-  px(g, T[2], 7, 13, 6, 1);
-  px(g, T[2], 6, 14, 8, 5);
-  px(g, T[3], 6, 14, 1, 3);
-  px(g, T[1], 13, 14, 1, 5);
-  px(g, T[1], 6, 18, 8, 1);
-  if (view === 'front') px(g, skin[2], 9, 13, 2, 1);
-
-  const dress = o.bottomKind === 'dress' || o.bottomKind === 'skirt';
-  if (sitting) {
-    // Seated: hips and thighs toward the viewer, feet tucked below.
-    const L = dress ? T : B;
-    px(g, L[2], 5, 19, 10, 2);
-    px(g, L[1], 5, 20, 10, 1);
-    px(g, L[3], 6, 19, 3, 1);
-    if (dress) { px(g, skin[2], 6, 21, 3, 1); px(g, skin[2], 11, 21, 3, 1); }
-    else { px(g, L[1], 6, 21, 3, 1); px(g, L[1], 11, 21, 3, 1); }
-    px(g, shoe[2], 5, 22, 4, 1); px(g, shoe[2], 11, 22, 4, 1);
-    px(g, shoe[3], 5, 22); px(g, shoe[3], 11, 22);
-    return;
-  }
-  const legL = legs === 'stepA' ? -1 : 0; // lifted leg is shorter by 1
-  const legR = legs === 'stepB' ? -1 : 0;
-  if (dress) {
-    // Skirt flares from the waist.
-    px(g, T[2], 6, 19, 8, 1);
-    px(g, T[2], 5, 20, 10, 2);
-    px(g, T[1], 5, 21, 10, 1);
-    px(g, T[3], 6, 19, 2, 2);
-    const skinL = skin[2], skinS = skin[1];
-    px(g, skinL, 7, 22 + legL, 2, 2); px(g, skinS, 8, 22 + legL, 1, 2);
-    px(g, skinL, 11, 22 + legR, 2, 2); px(g, skinS, 12, 22 + legR, 1, 2);
-  } else {
-    px(g, B[2], 6, 19, 8, 2);
-    px(g, B[3], 6, 19, 2, 1);
-    px(g, B[1], 13, 19, 1, 2);
-    const shorts = o.bottomKind === 'shorts';
-    for (const [x, off] of [[6, legL], [11, legR]] as const) {
-      px(g, B[2], x, 21, 3, 3 + off);
-      px(g, B[1], x + 2, 21, 1, 3 + off);
-      if (shorts) { px(g, skin[2], x, 22, 3, 2 + off); }
-    }
-  }
-  // Shoes face down-left in the front view.
-  for (const [x, off] of [[5, legL], [10, legR]] as const) {
-    const y = 24 + off;
-    if (view === 'front') { px(g, shoe[2], x, y, 4, 1); px(g, shoe[3], x, y); px(g, shoe[0], x + 3, y); }
-    else { px(g, shoe[1], x + 1, y, 3, 1); px(g, shoe[2], x + 1, y); }
-  }
-}
-
-function drawAccessory(g: Ctx, acc: string, view: 'front' | 'back', dy: number, hair: string[]) {
-  switch (acc) {
-    case 'acc_glasses':
-      if (view !== 'front') return;
-      for (const x of [5, 9]) { px(g, '#3A3A3A', x, 7 + dy, 3, 1); px(g, '#3A3A3A', x, 10 + dy, 3, 1); px(g, '#3A3A3A', x, 8 + dy, 1, 2); px(g, '#3A3A3A', x + 2, 8 + dy, 1, 2); }
-      px(g, '#3A3A3A', 8, 8 + dy); px(g, '#3A3A3A', 12, 8 + dy, 3, 1);
-      break;
-    case 'acc_beanie': {
-      const c = ramp('#D9644A');
-      px(g, c[2], 3, 2 + dy, 14, 4); px(g, c[3], 4, 1 + dy, 12, 1); px(g, c[1], 3, 5 + dy, 14, 1);
-      for (let x = 3; x < 17; x += 2) px(g, c[1], x, 3 + dy, 1, 2);
-      px(g, '#F2EEE4', 8, -1 + dy + 1, 4, 2); px(g, '#FFFFFF', 8, 0 + dy);
-      break;
-    }
-    case 'acc_cap': {
-      const c = ramp('#4A6A9A');
-      px(g, c[2], 3, 2 + dy, 13, 3); px(g, c[3], 5, 1 + dy, 9, 1); px(g, c[1], 3, 4 + dy, 13, 1);
-      if (view === 'front') { px(g, c[1], 0, 5 + dy, 7, 1); px(g, c[2], 1, 4 + dy, 5, 1); }
-      else { px(g, c[1], 7, 5 + dy, 6, 1); }
-      px(g, '#F2EEE4', 9, 2 + dy, 2, 1);
-      break;
-    }
-    case 'acc_flower':
-      px(g, '#FFFFFF', 13, 4 + dy, 3, 3); px(g, '#FFFFFF', 14, 3 + dy); px(g, '#F2C230', 14, 5 + dy);
-      px(g, '#E8E4DA', 15, 6 + dy);
-      break;
-    case 'acc_bow': {
-      const c = ramp('#E5566F');
-      px(g, c[2], 11, 0 + dy, 3, 3); px(g, c[2], 15, 0 + dy, 3, 3); px(g, c[1], 14, 1 + dy, 1, 1); px(g, c[3], 11, 0 + dy); px(g, c[3], 15, 0 + dy);
-      px(g, c[1], 13, 3 + dy); px(g, c[1], 15, 3 + dy);
-      break;
-    }
-    case 'acc_headphones': {
-      const c = ramp('#3A3A44');
-      px(g, c[2], 4, 1 + dy, 12, 1); px(g, c[2], 3, 2 + dy, 1, 4); px(g, c[2], 16, 2 + dy, 1, 4);
-      px(g, '#E5566F', 2, 6 + dy, 2, 4); px(g, '#E5566F', 16, 6 + dy, 2, 4); px(g, c[3], 2, 6 + dy);
-      break;
-    }
-    case 'acc_catears': {
-      const h = hair;
-      for (const x of [5, 12]) { px(g, h[2], x, 0 + dy, 3, 2); px(g, h[2], x + 1, -1 + dy + 0, 1, 1); px(g, '#F2A7C3', x + 1, 1 + dy); }
-      px(g, '#3A3A44', 4, 2 + dy, 12, 1);
-      break;
-    }
-  }
-}
-
 function drawProp(g: Ctx, prop: FrameSpec['prop']) {
   if (prop === 'snack') { px(g, '#E8B860', 0, 11, 3, 2); px(g, '#C8883A', 0, 12, 3, 1); px(g, '#7A4A2A', 1, 11); }
 }
@@ -828,9 +637,8 @@ export function paintAvatarFrame(g: Ctx, ox: number, oy: number, opt: PaintOptio
   const skin = ramp(SKINS[opt.look.skin] ?? SKINS[1]);
   const hair = ramp(HAIR_COLORS[opt.look.hairColor] ?? HAIR_COLORS[1]);
   const style = HAIR[opt.look.hair] ?? HAIR.short;
-  const outfit = OUTFITS[opt.look.outfit] ?? OUTFITS.fit_tee;
-  const oc: OutfitColors = { top: ramp(outfit.top), bottom: ramp(outfit.bottom) };
-  const sleeve = ramp(outfit.sleeve ?? outfit.top);
+  const d = dress(opt.look);
+  const { C: sleeve, bare } = sleeveOf(d);
   const eye = EYE_COLORS[opt.look.eyes] ?? EYE_COLORS[0];
   const bob = f.bob ?? 0;
   const view = opt.view;
@@ -844,26 +652,27 @@ export function paintAvatarFrame(g: Ctx, ox: number, oy: number, opt: PaintOptio
   cg.save();
   cg.translate(0, sitDrop + bob);
   if (view === 'front') drawHairMap(cg, style.behind, (style.behindY ?? 12) + headDy, hair);
-  if (f.legs !== 'sit' && f.arms[1].behind) drawArm(cg, behindSx, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
+  if (f.legs !== 'sit' && f.arms[1].behind) drawArm(cg, behindSx, 14, f.arms[1], sleeve, skin, bare);
   cg.restore();
 
   const [bc, bg] = canvas(FW, FH);
   bg.translate(0, bob);
-  drawBody(bg, outfit, oc, skin, f.legs, view);
-  outfit.detail?.(bg, view, oc);
+  paintBody(bg, d, { girl, skin, legs: f.legs }, view);
+  paintBag(bg, d, view);
   if (girl) narrowTorso(cg, bc, bob);
   else cg.drawImage(bc, 0, 0);
 
   cg.save();
   cg.translate(0, sitDrop + bob);
-  if (f.legs === 'sit' && f.arms[1].behind) drawArm(cg, behindSx, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
+  if (f.legs === 'sit' && f.arms[1].behind) drawArm(cg, behindSx, 14, f.arms[1], sleeve, skin, bare);
   drawHead(cg, skin, headDy, view);
+  paintCollar(cg, d, view, headDy);
   if (view === 'front') drawFace(cg, f.expr, skin, eye, headDy, opt.look);
   drawHairMap(cg, view === 'front' ? style.front : style.back, (view === 'front' ? style.frontY ?? 0 : style.backY ?? 0) + 1 + headDy, hair);
-  drawAccessory(cg, opt.look.accessory, view, headDy, hair);
+  paintHeadwear(cg, d, view, headDy);
   // Arms go over the body (near arm last). In the back view the near arm is screen-left too.
-  if (!f.arms[1].behind) drawArm(cg, farSx, 14, f.arms[1], sleeve, skin, outfit.sleeves === 'short');
-  drawArm(cg, nearSx, 14, f.arms[0], sleeve, skin, outfit.sleeves === 'short');
+  if (!f.arms[1].behind) drawArm(cg, farSx, 14, f.arms[1], sleeve, skin, bare);
+  drawArm(cg, nearSx, 14, f.arms[0], sleeve, skin, bare);
   drawProp(cg, f.prop);
   cg.restore();
 

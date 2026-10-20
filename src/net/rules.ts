@@ -6,6 +6,7 @@ import { applyMove, emptyBoard, outcome, type GameKind as BoardKind } from '../c
 import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '../core/grid';
 import { ITEM_BY_KEY, SLOT_UPGRADE, STARTER_COINS, STARTER_PLACEMENTS, STARTER_SLOTS, type ItemDef } from '../data/catalog';
 import { CAFE, DAILY_LIMITS, QUESTS, REWARDS, cafeLevel, cafePayout, milestone } from '../data/economy';
+import { cleanWear, colorPrice, onSale, ownedClothes, parseWorn, wearOf, worn, type Wear } from '../data/clothes';
 import { INTERACTION_BY_ID } from '../data/interactions';
 import { DRAW_ROUNDS, DRAW_WORDS, normalizeGuess } from '../data/words';
 import type { AvatarLook } from '../engine/art/avatar';
@@ -228,9 +229,26 @@ export function validTz(tz: string): boolean {
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz.length <= 64; } catch { return false; }
 }
 
+/** Changing clothes happens at a clothes rack, mirror or wardrobe in the room. */
+export function hasWardrobe(w: { placements: Placement[] }): boolean {
+  return w.placements.some((p) => ITEM_BY_KEY[p.item]?.actions?.includes('wardrobe'));
+}
+
+function needWardrobe(c: Ctx) {
+  if (!hasWardrobe(c.w)) throw new RuleError('Put a clothes rack, mirror or wardrobe in your room first.');
+}
+
+/** Every piece must be bought, or already on the person wearing it (so nobody is made to undress). */
+function mustOwn(w: World, wear: Wear, on: AvatarLook) {
+  const own = ownedClothes(w.unlocks);
+  const already = Object.values(wearOf(on));
+  for (const v of Object.values(wear)) if (v && !own.has(v) && !already.includes(v)) throw new RuleError('Buy that in the store first.');
+}
+
 export function setLook(c: Ctx, look: AvatarLook) {
+  needWardrobe(c);
   const l = cleanLook(look);
-  for (const k of [l.outfit, l.accessory]) if (!c.w.unlocks.includes(k)) throw new RuleError('Buy that in the store first.');
+  mustOwn(c.w, l.wear, c.w.profiles[c.me].look);
   c.w.profiles[c.me].look = l;
 }
 
@@ -241,9 +259,54 @@ export function cleanLook(look: AvatarLook): AvatarLook {
   if (!look || typeof look !== 'object') throw new RuleError('Pick a look first.');
   return {
     body: look.body === 'girl' ? 'girl' : 'guy',
-    skin: n(look.skin, 9), hair: k(look.hair, 'short'), hairColor: n(look.hairColor, 15), outfit: k(look.outfit, 'fit_tee'), accessory: k(look.accessory, 'acc_none'), eyes: n(look.eyes, 9),
+    skin: n(look.skin, 9), hair: k(look.hair, 'short'), hairColor: n(look.hairColor, 15), wear: wearOf(look), eyes: n(look.eyes, 9),
     freckles: look.freckles === true, blush: look.blush === true,
   };
+}
+
+/** One colorway of a piece: on the basics rack or this week's Boutique, half price if you own another color. */
+export function buyClothes(c: Ctx, key: string, color: number) {
+  const p = parseWorn(worn(key, color));
+  if (!p) throw new RuleError('That piece doesn’t exist.');
+  if (!onSale(key, c.now)) throw new RuleError('That’s gone from the Boutique. It may come back another week.');
+  const own = ownedClothes(c.w.unlocks);
+  if (own.has(worn(key, color))) throw new RuleError('You already own this.');
+  spend(c, colorPrice(own, key), `buy:${key}`);
+  c.w.unlocks.push(worn(key, color));
+  event(c, 'buy', { item: key, color });
+}
+
+export const SAVED_LOOKS = 4;
+
+export function saveLook(c: Ctx, index: number, wear: Wear | null) {
+  needWardrobe(c);
+  if (!Number.isInteger(index) || index < 0 || index >= SAVED_LOOKS) throw new RuleError('Pick a slot.');
+  const me = c.w.profiles[c.me];
+  const saved = (me.saved ?? []).slice(0, SAVED_LOOKS);
+  while (saved.length < SAVED_LOOKS) saved.push(null);
+  saved[index] = wear ? cleanWear(wear) : null;
+  me.saved = saved;
+}
+
+/** Pick an outfit for your partner. It waits for them to wear it or say "maybe later". */
+export function giftLook(c: Ctx, wear: Wear) {
+  needWardrobe(c);
+  const them = partnerOf(c);
+  if (!them || !c.w.profiles[them]) throw new RuleError('Your partner hasn’t moved in yet.');
+  const w = cleanWear(wear);
+  mustOwn(c.w, w, c.w.profiles[them].look);
+  c.w.profiles[them].gift = { wear: w, from: c.me, at: c.now.toISOString() };
+  event(c, 'outfit', {});
+}
+
+export function answerGift(c: Ctx, accept: boolean) {
+  const me = c.w.profiles[c.me];
+  if (!me.gift) throw new RuleError('There’s no outfit waiting.');
+  if (accept) {
+    mustOwn(c.w, me.gift.wear, me.look);
+    me.look = { ...cleanLook(me.look), wear: me.gift.wear };
+  }
+  me.gift = null;
 }
 
 const ALLOWED_DATA = ['photo', 'pixelate', 'verse', 'caption', 'takenAt'];

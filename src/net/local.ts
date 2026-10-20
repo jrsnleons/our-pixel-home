@@ -70,7 +70,7 @@ export class LocalBackend implements Backend {
   }
 
   private sam(): Profile {
-    return { id: SAM, name: 'Sam', look: { ...DEFAULT_LOOK, body: 'girl', hair: 'long', hairColor: 3, skin: 2, outfit: 'fit_sweater', accessory: 'acc_flower', eyes: 1, blush: true }, city: 'London', tz: 'Europe/London', lastSeen: new Date().toISOString(), visitStreak: 3, devotionStreak: 5 };
+    return { id: SAM, name: 'Sam', look: { ...DEFAULT_LOOK, body: 'girl', hair: 'long', hairColor: 3, skin: 2, wear: { top: 'knit:4', bottom: 'midi_skirt:0', shoes: 'boots:0', hat: 'flower:0' }, eyes: 1, blush: true }, city: 'London', tz: 'Europe/London', lastSeen: new Date().toISOString(), visitStreak: 3, devotionStreak: 5 };
   }
 
   async createCouple(): Promise<Snapshot> {

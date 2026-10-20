@@ -4,7 +4,6 @@
 import * as THREE from 'three';
 import { ITEM_BY_KEY } from '../data/catalog';
 import { THEMES, type ThemeKey } from '../data/themes';
-import { avatarPreview, DEFAULT_LOOK, type AvatarLook } from '../engine/art/avatar';
 import { buildFloorItem } from '../engine/art/furniture';
 import { dispose } from '../engine/art/kit';
 import { canvas } from '../engine/art/pixel';
@@ -72,10 +71,6 @@ function styleThumb(key: string, theme: ThemeKey): string {
     const [c, g] = canvas(64, 64);
     paintFloor(g, key, null);
     return c.toDataURL();
-  }
-  if (def?.category === 'outfit' || def?.category === 'accessory') {
-    const look: AvatarLook = { ...DEFAULT_LOOK, hair: def.category === 'accessory' ? 'bob' : 'short', hairColor: 2, outfit: def.category === 'outfit' ? key : 'fit_tee', accessory: def.category === 'accessory' ? key : 'acc_none' };
-    return avatarPreview(look, 'idle', 'front', 3).toDataURL();
   }
   return '';
 }

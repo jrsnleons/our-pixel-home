@@ -4,7 +4,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { sfx } from '../../audio/audio';
 import { CAFE, cafeLevel, cafeXpForLevel } from '../../data/economy';
-import { DEFAULT_LOOK, FH, FW, HAIR_STYLES, OUTFIT_KEYS, paintAvatarFrame, type AvatarLook } from '../../engine/art/avatar';
+import { randomWear } from '../../data/clothes';
+import { DEFAULT_LOOK, FH, FW, HAIR_STYLES, paintAvatarFrame, type AvatarLook } from '../../engine/art/avatar';
 import { dither } from '../../engine/art/pixel';
 import type { CafeEvent, LiveMsg } from '../../net/types';
 import { act, backend, couple, partner, partnerOnline, snap, toast } from '../../state/store';
@@ -53,8 +54,7 @@ interface Customer { id: number; seat: number; drink: DrinkKey; born: number; pa
 
 /** Regulars are drawn with the same avatar painter as you, so the café feels like your world. */
 function customerLook(n: number): AvatarLook {
-  const accs = ['acc_none', 'acc_none', 'acc_glasses', 'acc_beanie', 'acc_cap', 'acc_flower', 'acc_bow', 'acc_headphones'];
-  return { ...DEFAULT_LOOK, hair: HAIR_STYLES[(n * 5 + 1) % HAIR_STYLES.length], hairColor: (n * 3 + 2) % 8, skin: (n * 5 + 3) % 6, outfit: OUTFIT_KEYS[(n * 7 + 2) % OUTFIT_KEYS.length], accessory: accs[(n * 11 + 3) % accs.length], eyes: n % 4 };
+  return { ...DEFAULT_LOOK, body: n % 2 ? 'girl' : 'guy', hair: HAIR_STYLES[(n * 5 + 1) % HAIR_STYLES.length], hairColor: (n * 3 + 2) % 8, skin: (n * 5 + 3) % 6, wear: randomWear(n), eyes: n % 4 };
 }
 
 const spriteCache = new Map<string, HTMLCanvasElement>();

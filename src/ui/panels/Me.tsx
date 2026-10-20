@@ -4,9 +4,9 @@ import { useState } from 'preact/hooks';
 import { setSfx, sfx } from '../../audio/audio';
 import { ESV_NOTICE } from '../../data/bible';
 import { THEME_ORDER, THEMES } from '../../data/themes';
-import type { AvatarLook } from '../../engine/art/avatar';
-import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, sheet, snap, toast, tourReplay } from '../../state/store';
-import { AvatarEditor } from '../AvatarEditor';
+import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, sheet, snap, storeTab, toast, tourReplay } from '../../state/store';
+import { hasWardrobe } from '../../net/rules';
+import { EditorStage } from '../AvatarEditor';
 import { Field, Icon, Sheet, Tabs } from '../kit';
 import { sceneRef } from '../screens/Home';
 
@@ -16,22 +16,31 @@ export function Me({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('look');
   return (
     <Sheet title={me.value?.name ?? 'Me'} onClose={onClose} size="tall">
-      <Tabs value={tab} onChange={(t) => { sfx('tap'); setTab(t); }} options={[{ key: 'look' as Tab, label: 'Wardrobe' }, { key: 'us' as Tab, label: 'Us' }, { key: 'settings' as Tab, label: 'Settings' }]} />
-      {tab === 'look' && <Wardrobe />}
+      <Tabs value={tab} onChange={(t) => { sfx('tap'); setTab(t); }} options={[{ key: 'look' as Tab, label: 'Look' }, { key: 'us' as Tab, label: 'Us' }, { key: 'settings' as Tab, label: 'Settings' }]} />
+      {tab === 'look' && <MyLook />}
       {tab === 'us' && <Us />}
       {tab === 'settings' && <Settings />}
     </Sheet>
   );
 }
 
-function Wardrobe() {
+/** Your look, and where to change it: clothes are changed at a rack, mirror or wardrobe in the room. */
+function MyLook() {
   const s = snap.value!;
-  const [look, setLook] = useState<AvatarLook>(s.me.look);
-  const changed = JSON.stringify(look) !== JSON.stringify(s.me.look);
+  const has = hasWardrobe(s);
+  const go = (tab: string) => { sfx('open'); storeTab.value = tab; sheet.value = 'store'; };
   return (
     <div class="col">
-      <AvatarEditor look={look} onChange={setLook} owned={new Set(s.unlocks)} />
-      <button class="btn block" disabled={!changed} onClick={async () => { const ok = await act('set_look', { look }); if (ok) { sfx('pop'); toast('Looking good.'); } }}>Save my look</button>
+      <EditorStage look={s.me.look} />
+      {has ? (
+        <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, tap your clothes rack, mirror or wardrobe in the room.</p>
+      ) : (
+        <>
+          <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, you’ll need somewhere to get changed. A clothes rack is in the Store under Decor.</p>
+          <button class="btn block" onClick={() => go('decor')}>Find a clothes rack</button>
+        </>
+      )}
+      <button class="btn soft block" onClick={() => go('boutique')}><Icon name="store" size="s" />This week’s Boutique</button>
     </div>
   );
 }

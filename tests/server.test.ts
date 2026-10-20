@@ -30,7 +30,7 @@ describe.skipIf(!url)('api against Postgres', () => {
 
   it('sets up profiles, a home and pairing by code', async () => {
     expect(await snap(ANA)).toBeNull();
-    let r = await call(ANA, 'create_profile', { name: ' Ana ', look: { ...DEFAULT_LOOK, outfit: 'fit_sweater' }, tz: 'Asia/Manila' });
+    let r = await call(ANA, 'create_profile', { name: ' Ana ', look: { ...DEFAULT_LOOK, wear: { ...DEFAULT_LOOK.wear, top: 'knit:0' } }, tz: 'Asia/Manila' });
     expect(r.status).toBe(400); // not a starter outfit
     r = await call(ANA, 'create_profile', { name: ' Ana ', look: { ...DEFAULT_LOOK, hair: 'bob' }, tz: 'Asia/Manila' });
     expect(r.status).toBe(200);
@@ -58,10 +58,16 @@ describe.skipIf(!url)('api against Postgres', () => {
     expect(r.status).toBe(200);
     expect((r.body as { snapshot: Snapshot }).snapshot.couple!.coins).toBe(150);
     expect((await call(BEN, 'buy', { item: 'bed_wood' })).body).toEqual({ error: 'Not enough coins yet.' });
+    // Clothes: a basic colorway is always on sale; changing needs a clothes rack in the room.
+    r = await call(BEN, 'buy_clothes', { key: 'tee', color: 2 });
+    expect((r.body as { snapshot: Snapshot }).snapshot.unlocks).toContain('tee:2');
+    expect((r.body as { snapshot: Snapshot }).snapshot.couple!.coins).toBe(130); // half price: the tee is already yours in other colors
+    const look = { ...DEFAULT_LOOK, wear: { ...DEFAULT_LOOK.wear, top: 'tee:2' } };
+    expect((await call(BEN, 'set_look', { look })).body).toEqual({ error: 'Put a clothes rack, mirror or wardrobe in your room first.' });
     // Ten hearts at once from both phones: the row lock serializes them, the daily cap holds.
     await Promise.all(Array.from({ length: 10 }, (_, i) => call(i % 2 ? ANA : BEN, 'heart')));
     const s = (await snap(ANA))!;
-    expect(s.couple!.coins).toBe(150 + 2 * 10);
+    expect(s.couple!.coins).toBe(130 + 2 * 10);
     expect(s.events.filter((e) => e.kind === 'heart')).toHaveLength(10);
     r = await call(ANA, 'nope');
     expect(r.body).toEqual({ error: 'Unknown action.' });

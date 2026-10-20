@@ -1,20 +1,23 @@
-// The store: furniture, decor, wall items, styles and outfits, bought with the shared wallet.
+// The store: furniture, decor, wall items, styles and the clothes Boutique, bought with the shared wallet.
 
 import { useState } from 'preact/hooks';
 import { sfx } from '../../audio/audio';
 import { ITEMS, STORE_TABS, type ItemDef } from '../../data/catalog';
+import type { Piece } from '../../data/clothes';
 import { INTERACTION_BY_ID } from '../../data/interactions';
 import { slotsUsed } from '../../net/rules';
-import { act, coins, prefs, sheet, snap } from '../../state/store';
+import { act, coins, prefs, sheet, snap, storeTab } from '../../state/store';
 import { Coin, Icon, Sheet, Tabs } from '../kit';
 import { thumb } from '../thumbs';
+import { BoutiqueTab, PieceDetail } from './Boutique';
 import { pendingPlace } from './Decorate';
 
 const TIER = ['Starter', 'Basic', 'Cozy', 'Premium', 'Luxe', 'Luxe+'];
 
 export function Store({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState(STORE_TABS[0].key);
+  const [tab, setTab] = useState(() => { const t = storeTab.value ?? STORE_TABS[0].key; storeTab.value = null; return t; });
   const [sel, setSel] = useState<ItemDef | null>(null);
+  const [piece, setPiece] = useState<Piece | null>(null);
   const s = snap.value!;
   const owned = new Set(s.unlocks);
   const t = STORE_TABS.find((x) => x.key === tab)!;
@@ -22,11 +25,13 @@ export function Store({ onClose }: { onClose: () => void }) {
   const used = slotsUsed(s.inventory);
   const theme = prefs.value.theme;
 
+  if (piece) return <PieceDetail piece={piece} onBack={() => setPiece(null)} onClose={onClose} onDecor={() => { setPiece(null); setTab('decor'); }} />;
   if (sel) return <Detail def={sel} onBack={() => setSel(null)} onClose={onClose} owned={owned.has(sel.key)} />;
 
   return (
     <Sheet title="Store" onClose={onClose} size="tall" head={<span class="chip"><Coin n={coins.value.toLocaleString()} /></span>}>
       <Tabs value={tab} options={STORE_TABS.map((x) => ({ key: x.key, label: x.label }))} onChange={(k) => { sfx('tap'); setTab(k); }} />
+      {tab === 'boutique' ? <BoutiqueTab onPick={setPiece} /> : <>
       <p class="tiny muted" style={{ margin: '0 0 10px' }}>Storage box: {used}/{s.couple!.slots} slots</p>
       <div class="grid">
         {items.map((i) => {
@@ -41,6 +46,7 @@ export function Store({ onClose }: { onClose: () => void }) {
           );
         })}
       </div>
+      </>}
     </Sheet>
   );
 }
@@ -60,8 +66,6 @@ function Detail({ def, onBack, onClose, owned }: { def: ItemDef; onBack: () => v
     if (placeable && r.invId) {
       pendingPlace.value = r.invId;
       sheet.value = 'decorate';
-    } else if (def.category === 'outfit' || def.category === 'accessory') {
-      sheet.value = 'me';
     } else if (def.category === 'wallpaper' || def.category === 'floor') {
       pendingPlace.value = `style:${def.key}`;
       sheet.value = 'decorate';

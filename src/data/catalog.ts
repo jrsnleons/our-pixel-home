@@ -4,9 +4,9 @@
 export type Category =
   | 'bed' | 'table' | 'seating' | 'lighting' | 'storage'
   | 'decor' | 'plant' | 'rug' | 'faith' | 'wall'
-  | 'wallpaper' | 'floor' | 'outfit' | 'accessory' | 'upgrade';
+  | 'wallpaper' | 'floor' | 'upgrade';
 
-/** placeable: takes an inventory slot and goes on a grid. style: owned once, applied (wallpaper, floor, outfit). */
+/** placeable: takes an inventory slot and goes on a grid. style: owned once, applied (wallpaper, floor). Clothes live in clothes.ts. */
 export type Kind = 'floor-item' | 'wall-item' | 'style' | 'upgrade';
 
 export type Action = 'sit' | 'sleep' | 'play' | 'read' | 'draw' | 'music' | 'quiet' | 'look' | 'water' | 'write' | 'wardrobe' | 'photo' | 'calendar' | 'feed';
@@ -85,7 +85,8 @@ export const ITEMS: ItemDef[] = [
   F({ key: 'record_player', name: 'Record player', category: 'decor', price: 350, size: [1, 1], actions: ['music'], blurb: 'Soft music you both hear.' }),
   F({ key: 'globe', name: 'Globe', category: 'decor', price: 260, size: [1, 1], actions: ['look'], blurb: 'Pins on both your cities and the miles between.' }),
   F({ key: 'aquarium', name: 'Aquarium', category: 'decor', price: 900, size: [2, 1], actions: ['look', 'feed'], blurb: 'Three small fish and a castle.' }),
-  F({ key: 'mirror', name: 'Standing mirror', category: 'decor', price: 220, size: [1, 1], actions: ['wardrobe'], blurb: 'Check your outfit.' }),
+  F({ key: 'clothes_rack', name: 'Clothes rack', category: 'decor', price: 80, size: [1, 1], actions: ['wardrobe'], blurb: 'A rail for your clothes. Tap it to get changed.' }),
+  F({ key: 'mirror', name: 'Standing mirror', category: 'decor', price: 220, size: [1, 1], actions: ['wardrobe'], blurb: 'Check your outfit, then change it.' }),
   F({ key: 'candles', name: 'Candles', category: 'decor', price: 40, size: [1, 1], stacks: true, light: 1.6, blurb: 'Three candles on a tray.' }),
   F({ key: 'plush_bear', name: 'Bear plushie', category: 'decor', price: 90, size: [1, 1], stacks: true, blurb: 'Soft, patient, a good listener.' }),
   F({ key: 'plush_bunny', name: 'Bunny plushie', category: 'decor', price: 90, size: [1, 1], stacks: true, blurb: 'Floppy ears, button nose.' }),
@@ -140,29 +141,6 @@ export const ITEMS: ItemDef[] = [
   S({ key: 'fl_marble', name: 'Marble', category: 'floor', tier: 4, price: 3000, blurb: 'Polished, veined stone.' }),
   S({ key: 'fl_marble_gold', name: 'Marble with gold inlay', category: 'floor', tier: 5, price: 6000, blurb: 'Marble with thin gold lines.' }),
 
-  // Outfits
-  S({ key: 'fit_tee', name: 'Tee and jeans', category: 'outfit', price: 0, starter: true, blurb: 'The classic.' }),
-  S({ key: 'fit_hoodie', name: 'Hoodie', category: 'outfit', price: 0, starter: true, blurb: 'Soft, oversized, borrowed.' }),
-  S({ key: 'fit_sweater', name: 'Cable sweater', category: 'outfit', price: 150, blurb: 'Chunky knit for cold nights.' }),
-  S({ key: 'fit_overalls', name: 'Overalls', category: 'outfit', price: 200, blurb: 'Denim overalls over a striped tee.' }),
-  S({ key: 'fit_dress', name: 'Sundress', category: 'outfit', price: 250, blurb: 'Light cotton with a little collar.' }),
-  S({ key: 'fit_flannel', name: 'Flannel', category: 'outfit', price: 200, blurb: 'Plaid shirt, rolled sleeves.' }),
-  S({ key: 'fit_pajamas', name: 'Pajamas', category: 'outfit', price: 180, blurb: 'Matching set with piping.' }),
-  S({ key: 'fit_raincoat', name: 'Raincoat', category: 'outfit', price: 300, blurb: 'Bright yellow, ready for puddles.' }),
-  S({ key: 'fit_apron', name: 'Café apron', category: 'outfit', price: 260, blurb: 'Earned at the café counter.' }),
-  S({ key: 'fit_sunday', name: 'Sunday best', category: 'outfit', price: 450, blurb: 'A pressed shirt or blouse for church.' }),
-  S({ key: 'fit_formal', name: 'Date night', category: 'outfit', price: 600, blurb: 'For the night you finally see each other.' }),
-
-  // Accessories
-  S({ key: 'acc_none', name: 'None', category: 'accessory', price: 0, starter: true, blurb: 'Just you.' }),
-  S({ key: 'acc_glasses', name: 'Round glasses', category: 'accessory', price: 0, starter: true, blurb: 'Wire frames.' }),
-  S({ key: 'acc_beanie', name: 'Beanie', category: 'accessory', price: 120, blurb: 'Knitted, with a pom-pom.' }),
-  S({ key: 'acc_cap', name: 'Cap', category: 'accessory', price: 100, blurb: 'A worn baseball cap.' }),
-  S({ key: 'acc_flower', name: 'Flower clip', category: 'accessory', price: 80, blurb: 'A daisy above one ear.' }),
-  S({ key: 'acc_bow', name: 'Hair bow', category: 'accessory', price: 90, blurb: 'A big ribbon bow.' }),
-  S({ key: 'acc_headphones', name: 'Headphones', category: 'accessory', price: 160, blurb: 'Over-ear, for music together.' }),
-  S({ key: 'acc_catears', name: 'Cat-ear headband', category: 'accessory', price: 160, blurb: 'Silly. Cute. Both.' }),
-
   // Upgrades
   { key: 'up_slots', name: 'Bigger storage box', category: 'upgrade', kind: 'upgrade', price: 300, blurb: '+8 inventory slots. Buy as many as you need.' },
   { key: 'up_curtains', name: 'Window curtains', category: 'upgrade', kind: 'upgrade', unique: true, price: 120, blurb: 'Dress the window. The color follows your theme.' },
@@ -190,7 +168,7 @@ export const STORE_TABS: { key: string; label: string; cats: Category[] }[] = [
   { key: 'decor', label: 'Decor', cats: ['decor', 'plant', 'rug', 'faith'] },
   { key: 'wall', label: 'Wall', cats: ['wall'] },
   { key: 'styles', label: 'Walls & floors', cats: ['wallpaper', 'floor'] },
-  { key: 'outfits', label: 'Outfits', cats: ['outfit', 'accessory'] },
+  { key: 'boutique', label: 'Boutique', cats: [] },
   { key: 'more', label: 'More', cats: ['upgrade'] },
 ];
 
