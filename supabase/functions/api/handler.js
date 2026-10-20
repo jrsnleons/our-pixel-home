@@ -1378,6 +1378,24 @@ function shiftFinish(c, id, served, missed) {
   event(c, "shift", { pay, together: s.together, served: sv, job: job2 });
   return { pay, level, levelUp: level > before, job: job2, opened };
 }
+var GOD_COINS = 5e4;
+function godMode(c) {
+  const own = new Set(c.w.unlocks);
+  for (const d of Object.values(ITEM_BY_KEY)) if (d.kind === "style") own.add(d.key);
+  for (const p of PIECES) p.colors.forEach((_, i) => own.add(worn(p.key, i)));
+  c.w.unlocks = [...own];
+  c.w.couple.coins += GOD_COINS;
+  c.w.ledger.push({ user: c.me, reason: "god", amount: GOD_COINS, day: today(c), at: c.now.toISOString() });
+  const me = c.w.profiles[c.me];
+  const jobs = { ...me.jobs };
+  for (const k of JOB_KEYS) {
+    const need = JOBS[k].unlock;
+    if (need) jobs[need.after] = Math.max(jobs[need.after] ?? 0, need.shifts);
+  }
+  me.jobs = jobs;
+  me.god = true;
+  return { coins: GOD_COINS };
+}
 function unpair(c) {
   c.w.couple.archivedAt = c.now.toISOString();
 }
@@ -1534,6 +1552,10 @@ function dispatch(c, name, args, opts) {
       const r = shiftFinish(c, str(p.shiftId), int(p.served), int(p.missed));
       return { result: r, coins: r.pay };
     }
+    case "god_mode": {
+      if (!opts.godCheck?.(str(a.code))) throw new RuleError("That code isn\u2019t right.");
+      return { result: godMode(c), coins: 0 };
+    }
     case "unpair":
       unpair(c);
       return { coins: 0 };
@@ -1638,6 +1660,7 @@ var ACTIONS = /* @__PURE__ */ new Set([
   "draw_skip",
   "shift_start",
   "shift_finish",
+  "god_mode",
   "unpair",
   "restore"
 ]);
@@ -1645,7 +1668,13 @@ var READ_ONLY = /* @__PURE__ */ new Set(["draw_word"]);
 var uuid = () => crypto.randomUUID();
 var ok = (body) => ({ status: 200, body });
 var refuse = (message) => ({ status: 400, body: { error: message } });
-async function handle(sql, uid, body, now = /* @__PURE__ */ new Date()) {
+function sameCode(a, b) {
+  if (!b || a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+async function handle(sql, uid, body, now = /* @__PURE__ */ new Date(), opts = {}) {
   const req = body ?? {};
   const name = typeof req.name === "string" ? req.name : "";
   const args = req.args && typeof req.args === "object" ? req.args : {};
@@ -1664,7 +1693,7 @@ async function handle(sql, uid, body, now = /* @__PURE__ */ new Date()) {
         return ok({ snapshot: await joinCouple2(sql, uid, String(args.code ?? ""), now) });
       default:
         if (!ACTIONS.has(name)) return refuse("Unknown action.");
-        return ok(await act(sql, uid, name, args, now));
+        return ok(await act(sql, uid, name, args, now, opts));
     }
   } catch (e) {
     if (e instanceof RuleError) return refuse(e.message);
@@ -1762,7 +1791,7 @@ function inviteCode() {
   for (let i = 4; i < 8; i++) s += String(b[i] % 10);
   return s;
 }
-async function act(sql, uid, name, args, now) {
+async function act(sql, uid, name, args, now, opts) {
   return sql.begin(async (tx) => {
     const [p] = await tx`select couple_id from public.profiles where id = ${uid}`;
     if (!p?.couple_id) throw new RuleError("Pair up first.");
@@ -1775,7 +1804,7 @@ async function act(sql, uid, name, args, now) {
       const [q] = await tx`select last_seen from public.profiles where id = ${partner}`;
       partnerOnline = !!q?.last_seen && now.getTime() - new Date(q.last_seen).getTime() < ONLINE_WINDOW * 1e3;
     }
-    const out = dispatch({ w, me: uid, now, id: uuid }, name, args, { partnerOnline });
+    const out = dispatch({ w, me: uid, now, id: uuid }, name, args, { partnerOnline, godCheck: (code) => sameCode(code.trim(), opts.godCode ?? "") });
     if (!READ_ONLY.has(name)) {
       compact(w, now);
       await tx`

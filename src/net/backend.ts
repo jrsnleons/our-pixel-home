@@ -45,6 +45,7 @@ export interface Rpcs {
   draw_skip: { gameId: string };
   shift_start: { together: boolean; job?: JobKey };
   shift_finish: { shiftId: string; served: number; missed: number };
+  god_mode: { code: string };
   unpair: Record<string, never>;
   restore: Record<string, never>;
 }

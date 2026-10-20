@@ -29,11 +29,11 @@ export function Wardrobe({ onClose }: { onClose: () => void }) {
       <Tabs value={tab} onChange={(t) => { sfx('tap'); setTab(t); }} options={options} />
       {tab === 'me' && (
         <div class="col">
-          <EditorStage look={look} sticky />
-          <AvatarEditor look={look} onChange={setLook} owned={owned} clothesFirst />
-          <div class="sheet-foot">
-            <button class="btn block" disabled={!changed} onClick={save}>Save my look</button>
-          </div>
+          <AvatarEditor look={look} onChange={setLook} owned={owned} clothesFirst foot={
+            <div class="sheet-foot">
+              <button class="btn block" disabled={!changed} onClick={save}>Save my look</button>
+            </div>
+          } />
         </div>
       )}
       {tab === 'looks' && <Looks current={look} onWear={(w) => { setLook({ ...look, wear: w }); setTab('me'); sfx('pop'); }} />}
@@ -52,7 +52,7 @@ function Looks({ current, onWear }: { current: AvatarLook; onWear: (w: Wear) => 
       <div class="pick-grid two">
         {slots.map((w, i) => (
           <div class="pick" style={{ cursor: 'default' }}>
-            {w ? <img class="px" src={avatarThumb({ ...current, wear: w }, 'full', 3)} alt="" style={{ maxWidth: '72px' }} /> : <div class="empty-look"><Icon name="plus" /></div>}
+            {w ? <img class="px" src={avatarThumb({ ...current, wear: w }, 'full', 2)} alt="" style={{ maxWidth: '80px' }} /> : <div class="empty-look"><Icon name="plus" /></div>}
             <span>Look {i + 1}</span>
             <div class="row" style={{ gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
               {w && <button class="btn small" onClick={() => onWear(cleanWear(w))}>Wear</button>}
@@ -95,7 +95,7 @@ export function OutfitGift() {
   return (
     <div class="bubble gift-card" role="dialog" aria-label="An outfit for you">
       <span class="small center">{from} picked an outfit for you</span>
-      <div class="row" style={{ justifyContent: 'center' }}><AvatarPreview look={{ ...s.me.look, wear: gift.wear }} scale={4} /></div>
+      <div class="row" style={{ justifyContent: 'center' }}><AvatarPreview look={{ ...s.me.look, wear: gift.wear }} scale={2} /></div>
       <div class="row">
         <button class="btn ghost grow" onClick={() => answer(false)}>Maybe later</button>
         <button class="btn grow" onClick={() => answer(true)}>Wear it</button>

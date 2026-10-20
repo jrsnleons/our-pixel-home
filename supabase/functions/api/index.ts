@@ -33,6 +33,6 @@ Deno.serve(async (req) => {
   let body: unknown;
   try { body = JSON.parse(text || '{}'); } catch { return reply(400, { error: 'Bad request.' }); }
 
-  const r = await handle(sql, data.user.id, body);
+  const r = await handle(sql, data.user.id, body, new Date(), { godCode: Deno.env.get('GOD_CODE') ?? '' });
   return reply(r.status, r.body);
 });

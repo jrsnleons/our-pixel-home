@@ -11,6 +11,8 @@ import type { Snapshot } from './types';
 export interface DispatchOpts {
   /** Whether the partner is here right now (the server decides this from heartbeats). */
   partnerOnline: boolean;
+  /** Whether a code unlocks test mode. The server checks it against its secret; the preview allows any. */
+  godCheck?: (code: string) => boolean;
 }
 
 export interface Outcome { result?: unknown; coins: number }
@@ -60,6 +62,10 @@ export function dispatch<K extends RpcName>(c: R.Ctx, name: K, args: Rpcs[K], op
     case 'draw_skip': { const r = R.drawSkip(c, str((a as Rpcs['draw_skip']).gameId)); return { result: { word: r.word }, coins: r.coins }; }
     case 'shift_start': { const p = a as Rpcs['shift_start']; return { result: R.shiftStart(c, !!p.together, job(p.job)), coins: 0 }; }
     case 'shift_finish': { const p = a as Rpcs['shift_finish']; const r = R.shiftFinish(c, str(p.shiftId), int(p.served), int(p.missed)); return { result: r, coins: r.pay }; }
+    case 'god_mode': {
+      if (!opts.godCheck?.(str((a as Rpcs['god_mode']).code))) throw new R.RuleError('That code isn’t right.');
+      return { result: R.godMode(c), coins: 0 };
+    }
     case 'unpair': R.unpair(c); return { coins: 0 };
     case 'restore': R.restore(c); return { coins: 0 };
     default: throw new R.RuleError('Unknown action.');

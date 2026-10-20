@@ -11,7 +11,7 @@ const CATS: Category[] = ['affection', 'playful', 'cozy', 'faith', 'greeting'];
 export function InteractionWheel({ onClose, onPick }: { onClose: () => void; onPick: (id: string) => void }) {
   const [cat, setCat] = useState<Category>('affection');
   const look = me.value!.look;
-  const pics = useMemo(() => Object.fromEntries(INTERACTIONS.map((i) => [i.id, avatarPreview(look, i.a[0], 'front', 2).toDataURL()])), [look]);
+  const pics = useMemo(() => Object.fromEntries(INTERACTIONS.map((i) => [i.id, avatarPreview(look, i.a[0], 'front', 1).toDataURL()])), [look]);
   const ctx = { placedItems: placedKeys.value, theme: prefs.value.theme, day: day.value, questsDone: (snap.value?.quests ?? []).every((q) => q.claimed) };
   const list = INTERACTIONS.filter((i) => i.category === cat);
   return (

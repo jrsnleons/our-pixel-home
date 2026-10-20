@@ -7,7 +7,7 @@ import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '.
 import { ITEM_BY_KEY, SLOT_UPGRADE, STARTER_COINS, STARTER_PLACEMENTS, STARTER_SLOTS, type ItemDef } from '../data/catalog';
 import { DAILY_LIMITS, QUESTS, REWARDS, SHIFT, jobLevel, milestone, shiftPayout } from '../data/economy';
 import { JOB_KEYS, JOBS, jobLock, jobXp, type JobKey } from '../data/jobs';
-import { cleanWear, colorPrice, onSale, ownedClothes, parseWorn, wearOf, worn, type Wear } from '../data/clothes';
+import { cleanWear, colorPrice, onSale, ownedClothes, parseWorn, PIECES, wearOf, worn, type Wear } from '../data/clothes';
 import { INTERACTION_BY_ID } from '../data/interactions';
 import { DRAW_ROUNDS, DRAW_WORDS, normalizeGuess } from '../data/words';
 import type { AvatarLook } from '../engine/art/avatar';
@@ -674,6 +674,31 @@ export function shiftFinish(c: Ctx, id: string, served: number, missed: number):
   const level = jobLevel(jobXp(c.w.couple, job));
   event(c, 'shift', { pay, together: s.together, served: sv, job });
   return { pay, level, levelUp: level > before, job, opened };
+}
+
+// ---------- test mode ----------
+
+/** Coins test mode adds each time it's used. */
+export const GOD_COINS = 50_000;
+
+/**
+ * Hidden test mode for the app's owner: a pile of coins, every wall and floor style, every
+ * clothing piece in every color, and every job open. Furniture is bought with the coins, so
+ * placing and storage still work the usual way. The caller has already checked the code.
+ */
+export function godMode(c: Ctx): { coins: number } {
+  const own = new Set(c.w.unlocks);
+  for (const d of Object.values(ITEM_BY_KEY)) if (d.kind === 'style') own.add(d.key);
+  for (const p of PIECES) p.colors.forEach((_, i) => own.add(worn(p.key, i)));
+  c.w.unlocks = [...own];
+  c.w.couple.coins += GOD_COINS;
+  c.w.ledger.push({ user: c.me, reason: 'god', amount: GOD_COINS, day: today(c), at: c.now.toISOString() });
+  const me = c.w.profiles[c.me];
+  const jobs = { ...me.jobs };
+  for (const k of JOB_KEYS) { const need = JOBS[k].unlock; if (need) jobs[need.after] = Math.max(jobs[need.after] ?? 0, need.shifts); }
+  me.jobs = jobs;
+  me.god = true;
+  return { coins: GOD_COINS };
 }
 
 // ---------- unpair ----------

@@ -35,7 +35,7 @@ export function BoutiqueTab({ onPick }: { onPick: (p: Piece) => void }) {
     return (
       <button class={`card ${all ? 'owned' : ''}`} onClick={() => { sfx('tap'); onPick(p); }}>
         {p.matching && <span class="tag">Matching</span>}
-        <div class="thumb"><img class="px" src={avatarThumb(tryOn(s.me.look, p, 0, owned), head ? 'head' : 'full', head ? 3 : 2)} alt="" loading="lazy" /></div>
+        <div class="thumb"><img class="px" src={avatarThumb(tryOn(s.me.look, p, 0, owned), head ? 'head' : 'full', head ? 2 : 1)} alt="" loading="lazy" /></div>
         <span class="name">{p.name}</span>
         <span class="swatch-dots">{p.colors.map((c) => <i style={{ background: c }} />)}</span>
         <span class="price">{all ? 'Owned' : have ? <>More colors <Coin n={colorPrice(owned, p.key)} /></> : <Coin n={p.price} />}</span>
@@ -76,7 +76,7 @@ export function PieceDetail({ piece: p, onBack, onClose, onDecor }: { piece: Pie
   return (
     <Sheet title={p.name} onClose={onClose} size="tall" head={<button class="btn ghost small icon" onClick={onBack} aria-label="Back"><Icon name="back" size="s" /></button>}>
       <div class="col" style={{ alignItems: 'center', gap: '8px' }}>
-        <AvatarPreview look={tryOn(s.me.look, p, color, owned)} scale={7} />
+        <AvatarPreview look={tryOn(s.me.look, p, color, owned)} scale={4} />
         <span class="tiny muted">On you · tap to turn around</span>
       </div>
       <p style={{ margin: '10px 0 4px', fontFamily: 'var(--read-font), system-ui, sans-serif', fontSize: '15px', lineHeight: 1.35 }}>{p.blurb}</p>

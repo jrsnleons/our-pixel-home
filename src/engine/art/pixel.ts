@@ -25,11 +25,12 @@ export function hash(str: string): number {
   return h >>> 0;
 }
 
-export function canvas(w: number, h: number): [HTMLCanvasElement, Ctx] {
+/** read: the pixels will be read back (outlines, Scale2x), so keep the canvas off the GPU. */
+export function canvas(w: number, h: number, read = false): [HTMLCanvasElement, Ctx] {
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(w));
   c.height = Math.max(1, Math.round(h));
-  const g = c.getContext('2d', { willReadFrequently: false })!;
+  const g = c.getContext('2d', { willReadFrequently: read })!;
   g.imageSmoothingEnabled = false;
   return [c, g];
 }
@@ -265,3 +266,38 @@ export function star(g: Ctx, c: string, x: number, y: number) {
 
 /** 7x6 heart used in UI and effects. */
 export const HEART_MAP = ['.hh.hh.', 'hHhhhhh', 'hhhhhhh', '.hhhhh.', '..hhh..', '...h...'];
+
+/**
+ * Scale2x (EPX): doubles pixel art, rounding off stair-steps without inventing new colors.
+ * `rows` gives the output height of each source row (2, or 3 to stretch that row), so a body
+ * can come out taller than twice its height.
+ */
+export function scale2x(src: HTMLCanvasElement, rows?: number[]): HTMLCanvasElement {
+  const w = src.width, h = src.height;
+  const s = new Uint32Array(src.getContext('2d')!.getImageData(0, 0, w, h).data.buffer);
+  const at = (x: number, y: number) => s[Math.max(0, Math.min(h - 1, y)) * w + Math.max(0, Math.min(w - 1, x))];
+  const W = w * 2;
+  const heights = rows ?? new Array(h).fill(2);
+  const H = heights.reduce((a, b) => a + b, 0);
+  const [c, g] = canvas(W, H, true);
+  const img = g.createImageData(W, H);
+  const o = new Uint32Array(img.data.buffer);
+  let oy = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const P = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+      const e0 = C === A && C !== D && A !== B ? A : P;
+      const e1 = A === B && A !== C && B !== D ? B : P;
+      const e2 = D === C && D !== B && C !== A ? C : P;
+      const e3 = B === D && B !== A && D !== C ? D : P;
+      const i = oy * W + x * 2;
+      o[i] = e0; o[i + 1] = e1;
+      o[i + W] = e2; o[i + W + 1] = e3;
+      // A stretched row repeats its lower half.
+      for (let k = 2; k < heights[y]; k++) { o[i + W * k] = e2; o[i + W * k + 1] = e3; }
+    }
+    oy += heights[y];
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}

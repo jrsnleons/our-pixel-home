@@ -94,3 +94,19 @@ describe('job pay and levels', () => {
     expect(view.today.flowers).toBe(0);
   });
 });
+
+describe('test mode', () => {
+  it('only opens with the right code, then owns everything and opens every job', () => {
+    const { w, ana } = setup();
+    const opts = { partnerOnline: true, godCheck: (c: string) => c === 'secret' };
+    expect(() => dispatch(ana(), 'god_mode', { code: 'guess' }, opts)).toThrow('isn’t right');
+    expect(() => dispatch(ana(), 'god_mode', { code: 'secret' }, { partnerOnline: true })).toThrow('isn’t right');
+    const before = w.couple.coins;
+    dispatch(ana(), 'god_mode', { code: 'secret' }, opts);
+    expect(w.couple.coins).toBe(before + R.GOD_COINS);
+    expect(w.profiles.ana.god).toBe(true);
+    expect(jobLock(w.profiles.ana, 'delivery')).toBeNull();
+    expect(w.unlocks).toContain('maxi:3');
+    expect(new Set(w.unlocks).size).toBe(w.unlocks.length);
+  });
+});

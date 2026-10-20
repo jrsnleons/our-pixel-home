@@ -135,9 +135,9 @@ export function Celebrate({ label, day, onClose }: { label: string; day: string;
     <div class="celebrate" onClick={close}>
       <div class="pbox col center" style={{ padding: '18px 16px', maxWidth: '320px' }}>
         <div class="pair-art" style={{ marginBottom: '4px' }}>
-          <AvatarPreview look={s.me.look} scale={3} />
+          <AvatarPreview look={s.me.look} scale={2} />
           <span class="pair-heart on"><Icon name="heart" size="l" /></span>
-          {s.partner && <AvatarPreview look={s.partner.look} scale={3} />}
+          {s.partner && <AvatarPreview look={s.partner.look} scale={2} />}
         </div>
         <h2 style={{ fontWeight: 'normal', margin: 0 }}>{label}!</h2>
         <p class="small" style={{ margin: 0 }}>Thank God for every one of these days. There’s a coin gift in your wallet to celebrate.</p>

@@ -194,6 +194,7 @@ export function Home() {
     return () => clearTimeout(t);
   }, []);
 
+  const { fired: godFired, ...godHold } = useGodHold();
   const open = (s: Sheet) => { setBubble(null); sfx(s ? 'open' : 'close'); sheet.value = sheet.value === s ? null : s; };
 
   const startGame = async (kind: GameKind, p?: Placement) => {
@@ -228,7 +229,7 @@ export function Home() {
 
       {sheet.value !== 'decorate' && (
         <div class="hud">
-          <button class="pill" onClick={() => open('me')} aria-label="Days together">
+          <button class="pill" {...godHold} onClick={() => { if (!godFired()) open('me'); }} aria-label="Days together">
             <Icon name="heart" size="s" />
             <span><b>Day {day.value}</b><span class="sub">together</span></span>
           </button>
@@ -351,3 +352,30 @@ export function tzOffsetMinutes(tz: string): number {
 }
 
 export function itemDef(p: Placement) { return ITEM_BY_KEY[p.item]!; }
+
+/**
+ * Test mode, hidden: hold the "Day N together" chip for three seconds and enter the code. The
+ * server only accepts its own secret code, so the button does nothing for anyone without it.
+ */
+function useGodHold() {
+  const timer = useRef(0);
+  const fired = useRef(false);
+  const cancel = () => { window.clearTimeout(timer.current); };
+  const unlock = async () => {
+    fired.current = true;
+    sfx('pop');
+    const code = window.prompt('Test mode code');
+    if (!code) return;
+    const r = (await act('god_mode', { code })) as { coins: number } | undefined;
+    if (r) { sfx('win'); toast(`Test mode on: +${r.coins.toLocaleString()} coins, every outfit and every job.`, 'love'); }
+  };
+  return {
+    onPointerDown: () => { fired.current = false; cancel(); timer.current = window.setTimeout(unlock, 3000); },
+    onPointerUp: cancel,
+    onPointerLeave: cancel,
+    onPointerCancel: cancel,
+    onContextMenu: (e: Event) => e.preventDefault(),
+    /** True once after a hold opened the prompt, so that press doesn't also open the panel. */
+    fired: () => { const f = fired.current; fired.current = false; return f; },
+  };
+}

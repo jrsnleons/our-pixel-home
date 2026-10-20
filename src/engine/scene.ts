@@ -795,7 +795,7 @@ export class HomeScene {
   }
 
   setZoom(z: number) {
-    this.r.zoom = Math.max(1, Math.min(1.9, z));
+    this.r.zoom = Math.max(1, Math.min(2.6, z));
     if (this.r.zoom <= 1.01) this.r.pan.set(0, 0);
   }
 

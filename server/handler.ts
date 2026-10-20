@@ -28,7 +28,7 @@ const ACTIONS = new Set<RpcName>([
   'claim_daily', 'together_tick', 'heart', 'interaction', 'nudge', 'notebook_create', 'page_write', 'page_edit',
   'page_delete', 'prayer_add', 'prayer_pray', 'prayer_answer', 'prayer_delete', 'devotion', 'quest_claim',
   'game_start', 'game_move', 'game_resign', 'draw_word', 'draw_guess', 'draw_skip', 'shift_start', 'shift_finish',
-  'unpair', 'restore',
+  'god_mode', 'unpair', 'restore',
 ]);
 /** Actions that only read, so nothing is saved or broadcast. */
 const READ_ONLY = new Set<RpcName>(['draw_word']);
@@ -40,7 +40,18 @@ const refuse = (message: string): Reply => ({ status: 400, body: { error: messag
 interface ProfileRow { couple_id: string | null; data: Profile; last_seen: string | Date | null }
 interface CoupleRow { id: string; a: string; b: string | null; world: R.World; archived_at: string | Date | null }
 
-export async function handle(sql: Sql, uid: string, body: unknown, now = new Date()): Promise<Reply> {
+/** Server settings from the environment. godCode unlocks test mode; empty turns it off. */
+export interface HandleOpts { godCode?: string }
+
+/** Compare without stopping at the first wrong character, so timing says nothing about the code. */
+function sameCode(a: string, b: string): boolean {
+  if (!b || a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
+export async function handle(sql: Sql, uid: string, body: unknown, now = new Date(), opts: HandleOpts = {}): Promise<Reply> {
   const req = (body ?? {}) as { name?: unknown; args?: unknown };
   const name = typeof req.name === 'string' ? req.name : '';
   const args = (req.args && typeof req.args === 'object' ? req.args : {}) as Record<string, unknown>;
@@ -53,7 +64,7 @@ export async function handle(sql: Sql, uid: string, body: unknown, now = new Dat
       case 'join_couple': return ok({ snapshot: await joinCouple(sql, uid, String(args.code ?? ''), now) });
       default:
         if (!ACTIONS.has(name as RpcName)) return refuse('Unknown action.');
-        return ok(await act(sql, uid, name as RpcName, args as never, now));
+        return ok(await act(sql, uid, name as RpcName, args as never, now, opts));
     }
   } catch (e) {
     if (e instanceof R.RuleError) return refuse(e.message);
@@ -172,7 +183,7 @@ function inviteCode(): string {
 
 // ---------- actions ----------
 
-async function act<K extends RpcName>(sql: Sql, uid: string, name: K, args: Rpcs[K], now: Date) {
+async function act<K extends RpcName>(sql: Sql, uid: string, name: K, args: Rpcs[K], now: Date, opts: HandleOpts) {
   return sql.begin(async (tx) => {
     const [p] = await tx<{ couple_id: string | null }>`select couple_id from public.profiles where id = ${uid}`;
     if (!p?.couple_id) throw new R.RuleError('Pair up first.');
@@ -186,7 +197,7 @@ async function act<K extends RpcName>(sql: Sql, uid: string, name: K, args: Rpcs
       const [q] = await tx<{ last_seen: string | Date | null }>`select last_seen from public.profiles where id = ${partner}`;
       partnerOnline = !!q?.last_seen && now.getTime() - new Date(q.last_seen).getTime() < ONLINE_WINDOW * 1000;
     }
-    const out = dispatch({ w, me: uid, now, id: uuid }, name, args, { partnerOnline });
+    const out = dispatch({ w, me: uid, now, id: uuid }, name, args, { partnerOnline, godCheck: (code) => sameCode(code.trim(), opts.godCode ?? '') });
     if (!READ_ONLY.has(name)) {
       R.compact(w, now);
       await tx`

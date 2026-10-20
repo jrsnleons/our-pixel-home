@@ -168,7 +168,7 @@ textarea.input { resize: none; line-height: 1.4; font-family: var(--read-font), 
 .emotes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 8px; }
 .emote { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border: 0; cursor: pointer; background: var(--soft); color: var(--ink); font-size: .72em; line-height: 1.1; text-align: center; position: relative;
   box-shadow: 0 calc(-1 * var(--u)) 0 0 var(--outline), 0 var(--u) 0 0 var(--outline), calc(-1 * var(--u)) 0 0 0 var(--outline), var(--u) 0 0 0 var(--outline); }
-.emote img { width: 40px; height: 52px; image-rendering: pixelated; }
+.emote img { width: 40px; height: 60px; image-rendering: pixelated; }
 .emote.locked { opacity: .55; }
 .emote .lk { position: absolute; top: 3px; right: 3px; }
 
@@ -213,7 +213,7 @@ textarea.input { resize: none; line-height: 1.4; font-family: var(--read-font), 
 .avatar-stage canvas { image-rendering: pixelated; }
 /* Pairing: you, a heart, and the empty spot your partner will fill. */
 .pair-art { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 18px; }
-.pair-art .avatar-stage { width: 104px; height: 128px; padding: 0; overflow: hidden; }
+.pair-art .avatar-stage { width: 104px; height: 140px; padding: 0; overflow: hidden; }
 .pair-art .avatar-stage canvas { width: 80px; }
 .ghost-partner { opacity: .45; }
 .ghost-partner .ico { filter: grayscale(1); }
@@ -314,11 +314,16 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 18px; border: 0; bo
 
 /* Wardrobe */
 .sheet-foot { position: sticky; bottom: -16px; margin: 0 -14px -16px; padding: 10px 14px 14px; background: var(--panel); box-shadow: 0 -2px 0 var(--soft); z-index: 2; }
-.empty-look { width: 60px; height: 78px; display: grid; place-items: center; background: var(--panel); opacity: .6; }
+.empty-look { width: 80px; height: 120px; display: grid; place-items: center; background: var(--panel); opacity: .6; }
 .gift-card { left: 50%; top: 22%; transform: translate(-50%, 0); flex-direction: column; align-items: stretch; width: min(260px, 86%); }
 .gift-card .avatar-stage { padding: 4px; }
 .swatch-dots { display: flex; gap: 2px; justify-content: center; }
 .swatch-dots i { width: 7px; height: 7px; box-shadow: 0 0 0 1px var(--outline); }
 .boutique-head { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; }
 .swatch.have::after { content: ''; display: block; width: 8px; height: 8px; margin: 20px 0 0 20px; background: var(--good, #5BA35B); box-shadow: 0 0 0 1px var(--outline); }
+.editor-top { position: sticky; top: -4px; z-index: 3; background: var(--panel); margin: 0 -14px 10px; padding: 4px 14px 0; box-shadow: 0 6px 0 -4px color-mix(in srgb, var(--ink) 12%, transparent); }
+.screen .editor-top { background: var(--bg); top: calc(-24px - var(--safe-t)); margin: 0 -20px 10px; padding: 4px 20px 0; }
+.editor-top .avatar-stage { padding: 6px 18px; }
+.editor-top .tabs { justify-content: center; }
+.editor-page { min-height: 260px; }
 .editor-stage.sticky { position: sticky; top: -4px; z-index: 3; background: var(--panel); padding: 4px 0 6px; margin: 0 -14px; }

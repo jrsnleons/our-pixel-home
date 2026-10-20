@@ -39,4 +39,13 @@ if (section === 'clothes') {
     ]);
   }
 }
+if (section === 'pick') {
+  // A few pieces up close: ?s=pick&keys=hoodie,jeans&scale=6
+  const keys = (params.get('keys') ?? '').split(',');
+  for (const p of PIECES.filter((q) => keys.includes(q.key))) {
+    const on = (c: number): Wear => ({ ...DEFAULT_LOOK.wear, ...(p.full ? { bottom: undefined } : {}), [p.slot]: worn(p.key, c) });
+    const look = (body: 'guy' | 'girl', c: number): AvatarLook => ({ ...DEFAULT_LOOK, body, hair: body === 'girl' ? 'long' : 'short', hairColor: 2, wear: on(c) });
+    row(p.key, [avatarPreview(look('guy', 0), 'idle', 'front', scale), avatarPreview(look('girl', 1), 'idle', 'front', scale), avatarPreview(look('guy', 0), 'idle', 'back', scale), avatarPreview(look('girl', 0), 'sit', 'front', scale)]);
+  }
+}
 (window as unknown as { __ready: boolean }).__ready = true;
