@@ -2,6 +2,7 @@
 // the SQL columns in camelCase.
 
 import type { Placement, Surface } from '../core/grid';
+import type { Wear } from '../data/clothes';
 import type { AvatarLook } from '../engine/art/avatar';
 import type { SettleState, InteractionPlay } from '../engine/scene';
 import type { Tile } from '../core/grid';
@@ -19,6 +20,10 @@ export interface Profile {
   devotionStreak: number;
   /** Finished or skipped the guided tour of the home screen (so a new phone doesn't repeat it). */
   tourDone?: boolean;
+  /** Up to four outfits kept for a quick change (empty slots are null). */
+  saved?: (Wear | null)[];
+  /** An outfit the partner picked, waiting for a yes or a "maybe later". */
+  gift?: { wear: Wear; from: string; at: string } | null;
 }
 
 export interface RoomStyleRow {
@@ -74,7 +79,7 @@ export interface Devotion {
   createdAt: string;
 }
 
-export type EventKind = 'heart' | 'interaction' | 'nudge' | 'buy' | 'note' | 'prayer' | 'prayed' | 'answered' | 'devotion' | 'game' | 'shift' | 'quest' | 'reward' | 'decor' | 'joined' | 'milestone';
+export type EventKind = 'heart' | 'interaction' | 'nudge' | 'buy' | 'note' | 'prayer' | 'prayed' | 'answered' | 'devotion' | 'game' | 'shift' | 'quest' | 'reward' | 'decor' | 'joined' | 'milestone' | 'outfit';
 
 export interface FeedEvent {
   id: string;

@@ -4,7 +4,7 @@
 // checks the sign-in and hands over a Postgres connection, so the logic here is tested in
 // Node against a real Postgres (tests/server.test.ts).
 
-import { ITEM_BY_KEY } from '../src/data/catalog';
+import { ownedClothes } from '../src/data/clothes';
 import type { AvatarLook } from '../src/engine/art/avatar';
 import type { RpcName, Rpcs } from '../src/net/backend';
 import { dispatch, snapshotOf } from '../src/net/dispatch';
@@ -24,7 +24,7 @@ export interface Reply { status: number; body: unknown }
 const ONLINE_WINDOW = 150;
 
 const ACTIONS = new Set<RpcName>([
-  'buy', 'place', 'move', 'store', 'set_style', 'set_look', 'set_profile', 'set_couple', 'placement_data', 'water',
+  'buy', 'place', 'move', 'store', 'set_style', 'set_look', 'buy_clothes', 'save_look', 'gift_look', 'answer_gift', 'set_profile', 'set_couple', 'placement_data', 'water',
   'claim_daily', 'together_tick', 'heart', 'interaction', 'nudge', 'notebook_create', 'page_write', 'page_edit',
   'page_delete', 'prayer_add', 'prayer_pray', 'prayer_answer', 'prayer_delete', 'devotion', 'quest_claim',
   'game_start', 'game_move', 'game_resign', 'draw_word', 'draw_guess', 'draw_skip', 'shift_start', 'shift_finish',
@@ -93,7 +93,8 @@ async function createProfile(sql: Sql, uid: string, args: Record<string, unknown
   const tz = typeof args.tz === 'string' && R.validTz(args.tz) ? args.tz : 'UTC';
   const look = R.cleanLook(args.look as AvatarLook);
   // Before pairing you only own the starter wardrobe.
-  for (const k of [look.outfit, look.accessory]) if (!ITEM_BY_KEY[k]?.starter) throw new R.RuleError('Pick one of the starter outfits for now.');
+  const starters = ownedClothes([]);
+  for (const v of Object.values(look.wear)) if (v && !starters.has(v)) throw new R.RuleError('Pick one of the starter outfits for now.');
   const profile: Profile = { id: uid, name, look, city: null, tz, lastSeen: now.toISOString(), visitStreak: 0, devotionStreak: 0 };
   // Re-running setup before pairing just updates it; after pairing the world holds the profile.
   const rows = await sql<{ data: Profile }>`
