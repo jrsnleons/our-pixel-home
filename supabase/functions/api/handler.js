@@ -272,31 +272,30 @@ var REWARDS = {
     { days: 100, coins: 1e3 }
   ]
 };
-var CAFE = {
+var SHIFT = {
   /** Base pay per shift before level bonus and diminishing returns. */
   soloPay: 30,
   togetherPayEach: 50,
   /** A shift is 3 minutes; the server refuses payouts for shifts shorter than this. */
   shiftSeconds: 180,
   minSeconds: 100,
-  /** Pay drops after this many shifts in a day (soft diminishing returns). */
+  /** Pay drops after this many shifts in a day, all jobs together (soft diminishing returns). */
   softCap: 10,
-  /** XP per served order; level = floor(sqrt(xp / 40)) + 1, capped at 10. */
-  xpPerOrder: 1,
+  /** Level = floor(sqrt(xp / 40)) + 1, capped at 10. XP per order is set per job. */
   maxLevel: 10,
   /** Each level adds 6% pay. */
   levelBonus: 0.06
 };
-function cafeLevel(xp) {
-  return Math.min(CAFE.maxLevel, Math.floor(Math.sqrt(Math.max(0, xp) / 40)) + 1);
+function jobLevel(xp) {
+  return Math.min(SHIFT.maxLevel, Math.floor(Math.sqrt(Math.max(0, xp) / 40)) + 1);
 }
-function cafePayout(opts) {
-  const base = opts.together ? CAFE.togetherPayEach : CAFE.soloPay;
+function shiftPayout(opts) {
+  const base = opts.together ? SHIFT.togetherPayEach : SHIFT.soloPay;
   const q = Math.max(0, Math.min(1, opts.quality));
   const performance = 0.4 + 0.6 * q;
-  const levelMult = 1 + CAFE.levelBonus * (opts.level - 1);
+  const levelMult = 1 + SHIFT.levelBonus * (opts.level - 1);
   const n = opts.shiftsToday;
-  const diminish = n < CAFE.softCap ? 1 : n < CAFE.softCap * 2 ? 0.5 : 0.25;
+  const diminish = n < SHIFT.softCap ? 1 : n < SHIFT.softCap * 2 ? 0.5 : 0.25;
   return Math.max(1, Math.round(base * performance * levelMult * diminish));
 }
 function daysTogether(since, today2 = /* @__PURE__ */ new Date()) {
@@ -340,6 +339,57 @@ var DAILY_LIMITS = {
   devotion: { scope: "user", count: REWARDS.devotion.perDay },
   heart: { scope: "user", count: REWARDS.heart.perDay }
 };
+
+// src/data/jobs.ts
+var JOBS = {
+  cafe: {
+    key: "cafe",
+    name: "Caf\xE9",
+    place: "Pixel Caf\xE9",
+    blurb: "Read each order, make the drink and hand it over before they get tired of waiting.",
+    orderSeconds: 5,
+    xpPerOrder: 1,
+    unit: ["drink", "drinks"],
+    roles: ["counter", "barista"]
+  },
+  flowers: {
+    key: "flowers",
+    name: "Flower shop",
+    place: "Petal & Stem",
+    blurb: "Build each bouquet from the order card: three flowers, a wrap and a ribbon.",
+    unlock: { after: "cafe", shifts: 3 },
+    orderSeconds: 7,
+    xpPerOrder: 2,
+    unit: ["bouquet", "bouquets"],
+    roles: ["wrapping", "flowers"]
+  },
+  delivery: {
+    key: "delivery",
+    name: "Delivery",
+    place: "Bike delivery",
+    blurb: "Ride down Maple Street, dodge puddles and cats, and drop each parcel at the right mailbox.",
+    unlock: { after: "flowers", shifts: 3 },
+    orderSeconds: 2.5,
+    xpPerOrder: 1,
+    unit: ["parcel", "parcels"],
+    roles: ["left lane", "right lane"]
+  }
+};
+var JOB_KEYS = Object.keys(JOBS);
+var isJob = (k) => typeof k === "string" && k in JOBS;
+function shiftsWorked(p, job2) {
+  return p?.jobs?.[job2] ?? 0;
+}
+function jobLock(p, job2) {
+  const u = JOBS[job2].unlock;
+  if (!u) return null;
+  const left = u.shifts - shiftsWorked(p, u.after);
+  return left > 0 ? { after: u.after, left } : null;
+}
+function jobXp(c, job2) {
+  if (!c) return 0;
+  return job2 === "cafe" ? c.cafeXp : c.jobXp?.[job2] ?? 0;
+}
 
 // src/core/boardgames.ts
 var DIMS = {
@@ -1280,39 +1330,53 @@ function advanceDraw(c, g) {
   g.updatedAt = c.now.toISOString();
   return { game: g, coins };
 }
-function shiftStart(c, together) {
+function shiftStart(c, together, job2 = "cafe") {
+  if (!JOBS[job2]) throw new RuleError("That job isn\u2019t hiring.");
+  const lock = jobLock(c.w.profiles[c.me], job2);
+  if (lock) throw new RuleError(`Work ${lock.left} more ${JOBS[lock.after].name.toLowerCase()} shift${lock.left === 1 ? "" : "s"} first.`);
   if (together && !partnerOf(c)) throw new RuleError("Invite your partner to work together.");
-  const s = { id: c.id(), together, startedBy: c.me, startedAt: c.now.toISOString(), status: "open", finishedBy: [] };
+  const s = { id: c.id(), job: job2, together, startedBy: c.me, startedAt: c.now.toISOString(), status: "open", finishedBy: [] };
   c.w.shifts.push(s);
   if (c.w.shifts.length > 60) c.w.shifts.splice(0, c.w.shifts.length - 60);
   return s;
+}
+function shiftsToday(w, user, day) {
+  return w.ledger.filter((l) => l.user === user && l.day === day && JOB_KEYS.includes(l.reason)).length;
 }
 function shiftFinish(c, id, served, missed) {
   const s = c.w.shifts.find((q) => q.id === id);
   if (!s) throw new RuleError("That shift is over.");
   if (s.finishedBy?.includes(c.me)) throw new RuleError("Already paid for this shift.");
   if (!s.together && s.startedBy !== c.me) throw new RuleError("Not your shift.");
+  const job2 = s.job ?? "cafe";
+  const J = JOBS[job2];
   const secs = (c.now.getTime() - Date.parse(s.startedAt)) / 1e3;
-  if (secs < CAFE.minSeconds) throw new RuleError("That shift was too short to pay.");
-  const sv = Math.max(0, Math.min(60, Math.floor(served)));
-  const ms = Math.max(0, Math.min(60, Math.floor(missed)));
-  const maxOrders = Math.ceil(Math.min(secs, CAFE.shiftSeconds + 30) / 5);
-  const quality = sv + ms === 0 ? 0 : Math.min(sv, maxOrders) / (sv + ms);
+  if (secs < SHIFT.minSeconds) throw new RuleError("That shift was too short to pay.");
+  const sv = Math.max(0, Math.min(80, Math.floor(served)));
+  const ms = Math.max(0, Math.min(80, Math.floor(missed)));
+  const maxOrders = Math.ceil(Math.min(secs, SHIFT.shiftSeconds + 30) / J.orderSeconds);
+  const real = Math.min(sv, maxOrders);
+  const quality = sv + ms === 0 ? 0 : real / (sv + ms);
   const day = today(c);
-  const shiftsToday = c.w.ledger.filter((l) => l.user === c.me && l.reason === "cafe" && l.day === day).length;
-  const before = cafeLevel(c.w.couple.cafeXp);
-  const pay = cafePayout({ together: s.together, quality, level: before, shiftsToday });
+  const before = jobLevel(jobXp(c.w.couple, job2));
+  const pay = shiftPayout({ together: s.together, quality, level: before, shiftsToday: shiftsToday(c.w, c.me, day) });
   c.w.couple.coins += pay;
-  c.w.ledger.push({ user: c.me, reason: "cafe", amount: pay, day, at: c.now.toISOString() });
-  c.w.couple.cafeXp += Math.min(sv, maxOrders) * CAFE.xpPerOrder;
+  c.w.ledger.push({ user: c.me, reason: job2, amount: pay, day, at: c.now.toISOString() });
+  const xp = real * J.xpPerOrder;
+  if (job2 === "cafe") c.w.couple.cafeXp += xp;
+  else c.w.couple.jobXp = { ...c.w.couple.jobXp, [job2]: jobXp(c.w.couple, job2) + xp };
+  const me = c.w.profiles[c.me];
+  const locked = JOB_KEYS.filter((k) => jobLock(me, k));
+  me.jobs = { ...me.jobs, [job2]: (me.jobs?.[job2] ?? 0) + 1 };
+  const opened = locked.find((k) => !jobLock(me, k)) ?? null;
   s.finishedBy = [...s.finishedBy ?? [], c.me];
   s.served = sv;
   s.missed = ms;
   if (!s.together || s.finishedBy.length >= 2) s.status = "done";
   s.pay = pay;
-  const level = cafeLevel(c.w.couple.cafeXp);
-  event(c, "shift", { pay, together: s.together, served: sv });
-  return { pay, level, levelUp: level > before };
+  const level = jobLevel(jobXp(c.w.couple, job2));
+  event(c, "shift", { pay, together: s.together, served: sv, job: job2 });
+  return { pay, level, levelUp: level > before, job: job2, opened };
 }
 function unpair(c) {
   c.w.couple.archivedAt = c.now.toISOString();
@@ -1461,8 +1525,10 @@ function dispatch(c, name, args, opts) {
       const r = drawSkip(c, str(a.gameId));
       return { result: { word: r.word }, coins: r.coins };
     }
-    case "shift_start":
-      return { result: shiftStart(c, !!a.together), coins: 0 };
+    case "shift_start": {
+      const p = a;
+      return { result: shiftStart(c, !!p.together, job(p.job)), coins: 0 };
+    }
     case "shift_finish": {
       const p = a;
       const r = shiftFinish(c, str(p.shiftId), int(p.served), int(p.missed));
@@ -1486,6 +1552,8 @@ function snapshotOf(w, me, now = /* @__PURE__ */ new Date()) {
     const e = earnedToday(w, me, k, day);
     today2[k] = DAILY_LIMITS[k].count != null ? e.count : e.coins;
   }
+  for (const k of JOB_KEYS) today2[k] = earnedToday(w, me, k, day).coins;
+  today2.shifts = shiftsToday(w, me, day);
   return {
     me: w.profiles[me],
     partner: partnerId ? w.profiles[partnerId] ?? null : null,
@@ -1518,6 +1586,11 @@ function obj(v) {
 }
 function color(v) {
   return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : "#E8A0A8";
+}
+function job(v) {
+  if (v == null) return "cafe";
+  if (!isJob(v)) throw new RuleError("That job isn\u2019t hiring.");
+  return v;
 }
 function spot(p) {
   const surface = p.surface === "back" || p.surface === "left" ? p.surface : p.surface === "floor" ? "floor" : null;

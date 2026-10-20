@@ -5,7 +5,8 @@
 import { applyMove, emptyBoard, outcome, type GameKind as BoardKind } from '../core/boardgames';
 import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '../core/grid';
 import { ITEM_BY_KEY, SLOT_UPGRADE, STARTER_COINS, STARTER_PLACEMENTS, STARTER_SLOTS, type ItemDef } from '../data/catalog';
-import { CAFE, DAILY_LIMITS, QUESTS, REWARDS, cafeLevel, cafePayout, milestone } from '../data/economy';
+import { DAILY_LIMITS, QUESTS, REWARDS, SHIFT, jobLevel, milestone, shiftPayout } from '../data/economy';
+import { JOB_KEYS, JOBS, jobLock, jobXp, type JobKey } from '../data/jobs';
 import { cleanWear, colorPrice, onSale, ownedClothes, parseWorn, wearOf, worn, type Wear } from '../data/clothes';
 import { INTERACTION_BY_ID } from '../data/interactions';
 import { DRAW_ROUNDS, DRAW_WORDS, normalizeGuess } from '../data/words';
@@ -619,43 +620,60 @@ function advanceDraw(c: Ctx, g: Game): { game: Game; coins: number } {
   return { game: g, coins };
 }
 
-// ---------- café ----------
+// ---------- jobs ----------
 
-export function shiftStart(c: Ctx, together: boolean): Shift {
+export function shiftStart(c: Ctx, together: boolean, job: JobKey = 'cafe'): Shift {
+  if (!JOBS[job]) throw new RuleError('That job isn’t hiring.');
+  // Together, the one who opens the shift needs the job; their partner can come along.
+  const lock = jobLock(c.w.profiles[c.me], job);
+  if (lock) throw new RuleError(`Work ${lock.left} more ${JOBS[lock.after].name.toLowerCase()} shift${lock.left === 1 ? '' : 's'} first.`);
   if (together && !partnerOf(c)) throw new RuleError('Invite your partner to work together.');
-  const s = { id: c.id(), together, startedBy: c.me, startedAt: c.now.toISOString(), status: 'open' as const, finishedBy: [] as string[] };
+  const s = { id: c.id(), job, together, startedBy: c.me, startedAt: c.now.toISOString(), status: 'open' as const, finishedBy: [] as string[] };
   c.w.shifts.push(s);
   if (c.w.shifts.length > 60) c.w.shifts.splice(0, c.w.shifts.length - 60);
   return s;
 }
 
-/** Each worker finishes their own half; together shifts pay each person. */
-export function shiftFinish(c: Ctx, id: string, served: number, missed: number): { pay: number; level: number; levelUp: boolean } {
+/** Shifts this person was paid for today, all jobs together (pay drops after the soft cap). */
+export function shiftsToday(w: World, user: string, day: string): number {
+  return w.ledger.filter((l) => l.user === user && l.day === day && (JOB_KEYS as string[]).includes(l.reason)).length;
+}
+
+/** Each worker finishes their own half; together shifts pay each person and count for both. */
+export function shiftFinish(c: Ctx, id: string, served: number, missed: number): { pay: number; level: number; levelUp: boolean; job: JobKey; opened: JobKey | null } {
   const s = c.w.shifts.find((q) => q.id === id);
   if (!s) throw new RuleError('That shift is over.');
   if (s.finishedBy?.includes(c.me)) throw new RuleError('Already paid for this shift.');
   if (!s.together && s.startedBy !== c.me) throw new RuleError('Not your shift.');
+  const job = s.job ?? 'cafe';
+  const J = JOBS[job];
   const secs = (c.now.getTime() - Date.parse(s.startedAt)) / 1000;
-  if (secs < CAFE.minSeconds) throw new RuleError('That shift was too short to pay.');
-  const sv = Math.max(0, Math.min(60, Math.floor(served)));
-  const ms = Math.max(0, Math.min(60, Math.floor(missed)));
-  // A shift has at most one order every ~5 seconds; anything more is not a real shift.
-  const maxOrders = Math.ceil(Math.min(secs, CAFE.shiftSeconds + 30) / 5);
-  const quality = sv + ms === 0 ? 0 : Math.min(sv, maxOrders) / (sv + ms);
+  if (secs < SHIFT.minSeconds) throw new RuleError('That shift was too short to pay.');
+  const sv = Math.max(0, Math.min(80, Math.floor(served)));
+  const ms = Math.max(0, Math.min(80, Math.floor(missed)));
+  // Orders can't come faster than the job allows; anything more is not a real shift.
+  const maxOrders = Math.ceil(Math.min(secs, SHIFT.shiftSeconds + 30) / J.orderSeconds);
+  const real = Math.min(sv, maxOrders);
+  const quality = sv + ms === 0 ? 0 : real / (sv + ms);
   const day = today(c);
-  const shiftsToday = c.w.ledger.filter((l) => l.user === c.me && l.reason === 'cafe' && l.day === day).length;
-  const before = cafeLevel(c.w.couple.cafeXp);
-  const pay = cafePayout({ together: s.together, quality, level: before, shiftsToday });
+  const before = jobLevel(jobXp(c.w.couple, job));
+  const pay = shiftPayout({ together: s.together, quality, level: before, shiftsToday: shiftsToday(c.w, c.me, day) });
   c.w.couple.coins += pay;
-  c.w.ledger.push({ user: c.me, reason: 'cafe', amount: pay, day, at: c.now.toISOString() });
-  c.w.couple.cafeXp += Math.min(sv, maxOrders) * CAFE.xpPerOrder;
+  c.w.ledger.push({ user: c.me, reason: job, amount: pay, day, at: c.now.toISOString() });
+  const xp = real * J.xpPerOrder;
+  if (job === 'cafe') c.w.couple.cafeXp += xp;
+  else c.w.couple.jobXp = { ...c.w.couple.jobXp, [job]: jobXp(c.w.couple, job) + xp };
+  const me = c.w.profiles[c.me];
+  const locked = JOB_KEYS.filter((k) => jobLock(me, k));
+  me.jobs = { ...me.jobs, [job]: (me.jobs?.[job] ?? 0) + 1 };
+  const opened = locked.find((k) => !jobLock(me, k)) ?? null;
   s.finishedBy = [...(s.finishedBy ?? []), c.me];
   s.served = sv; s.missed = ms;
   if (!s.together || s.finishedBy.length >= 2) s.status = 'done';
   s.pay = pay;
-  const level = cafeLevel(c.w.couple.cafeXp);
-  event(c, 'shift', { pay, together: s.together, served: sv });
-  return { pay, level, levelUp: level > before };
+  const level = jobLevel(jobXp(c.w.couple, job));
+  event(c, 'shift', { pay, together: s.together, served: sv, job });
+  return { pay, level, levelUp: level > before, job, opened };
 }
 
 // ---------- unpair ----------

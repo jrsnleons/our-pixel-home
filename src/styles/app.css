@@ -244,6 +244,21 @@ textarea.input { resize: none; line-height: 1.4; font-family: var(--read-font), 
 .drinks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .drinks .btn { flex-direction: column; min-height: 58px; font-size: .75em; padding: 4px 2px; }
 .drinks img { width: 28px; height: 28px; image-rendering: pixelated; }
+.cafe.street { width: min(100%, calc(56dvh * .75)); margin: 0 auto; }
+.bench { display: flex; gap: 10px; align-items: center; }
+.bench-preview { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 8px; border: 0; cursor: pointer; color: var(--ink); width: 124px; flex: none; }
+.chip.parcel i { width: 10px; height: 10px; display: inline-block; box-shadow: 0 0 0 1px var(--outline); }
+.chip.combo { background: var(--accent); color: var(--accent-ink); }
+.lane-btn { min-height: 52px; font-size: 1.05em; touch-action: manipulation; }
+.lane-btn[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+
+/* ---------- job board ---------- */
+.job-card { display: flex; flex-direction: column; }
+.job-head { display: flex; gap: 10px; align-items: center; padding: 10px; background: none; border: 0; color: var(--ink); text-align: left; cursor: pointer; width: 100%; }
+.job-head img { width: 84px; height: 60px; object-fit: cover; image-rendering: pixelated; box-shadow: 0 0 0 2px var(--outline); flex: none; }
+.job-card.locked .job-head { cursor: default; }
+.job-card.locked .job-head img { filter: grayscale(.85) brightness(.9); }
+.job-card[aria-expanded='true'] { box-shadow: 0 0 0 3px var(--accent); }
 .meter { height: 12px; background: var(--soft); box-shadow: 0 0 0 2px var(--outline); position: relative; overflow: hidden; }
 .meter > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
 

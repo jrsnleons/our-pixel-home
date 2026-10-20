@@ -3,6 +3,7 @@
 // supabase/functions/api/handler.js), so the rules can't drift between them.
 
 import { DAILY_LIMITS, daysTogether } from '../data/economy';
+import { isJob, JOB_KEYS, type JobKey } from '../data/jobs';
 import type { RpcName, Rpcs } from './backend';
 import * as R from './rules';
 import type { Snapshot } from './types';
@@ -57,7 +58,7 @@ export function dispatch<K extends RpcName>(c: R.Ctx, name: K, args: Rpcs[K], op
     case 'draw_word': return { result: R.drawWord(c, str((a as Rpcs['draw_word']).gameId)), coins: 0 };
     case 'draw_guess': { const p = a as Rpcs['draw_guess']; const r = R.drawGuess(c, str(p.gameId), str(p.guess).slice(0, 40)); return { result: { right: r.right, word: r.word }, coins: r.coins }; }
     case 'draw_skip': { const r = R.drawSkip(c, str((a as Rpcs['draw_skip']).gameId)); return { result: { word: r.word }, coins: r.coins }; }
-    case 'shift_start': return { result: R.shiftStart(c, !!(a as Rpcs['shift_start']).together), coins: 0 };
+    case 'shift_start': { const p = a as Rpcs['shift_start']; return { result: R.shiftStart(c, !!p.together, job(p.job)), coins: 0 }; }
     case 'shift_finish': { const p = a as Rpcs['shift_finish']; const r = R.shiftFinish(c, str(p.shiftId), int(p.served), int(p.missed)); return { result: r, coins: r.pay }; }
     case 'unpair': R.unpair(c); return { coins: 0 };
     case 'restore': R.restore(c); return { coins: 0 };
@@ -74,6 +75,9 @@ export function snapshotOf(w: R.World, me: string, now = new Date()): Snapshot {
     const e = R.earnedToday(w, me, k, day);
     today[k] = DAILY_LIMITS[k].count != null ? e.count : e.coins;
   }
+  // Coins from each job today, and shifts across all of them (pay softens after ten).
+  for (const k of JOB_KEYS) today[k] = R.earnedToday(w, me, k, day).coins;
+  today.shifts = R.shiftsToday(w, me, day);
   return {
     me: w.profiles[me],
     partner: partnerId ? w.profiles[partnerId] ?? null : null,
@@ -108,6 +112,11 @@ function obj<T>(v: T): T {
 }
 function color(v: unknown): string {
   return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#E8A0A8';
+}
+function job(v: unknown): JobKey {
+  if (v == null) return 'cafe';
+  if (!isJob(v)) throw new R.RuleError('That job isn’t hiring.');
+  return v;
 }
 function spot(p: { surface: unknown; x: unknown; y: unknown; rot: unknown }) {
   const surface = p.surface === 'back' || p.surface === 'left' ? p.surface : p.surface === 'floor' ? 'floor' : null;
