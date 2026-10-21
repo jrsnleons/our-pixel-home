@@ -86,6 +86,14 @@ describe('Maple Town', () => {
 });
 
 describe('Interiors', () => {
+  it('have room for every piece of stock', () => {
+    expect(INTERIORS.maple.displays!.week!.length).toBeGreaterThanOrEqual(8);
+    expect(INTERIORS.maple.displays!.step!.length).toBeGreaterThanOrEqual(2);
+    expect(INTERIORS.maple.displays!.basic!.length).toBeGreaterThanOrEqual(6);
+    expect(INTERIORS.boutique.displays!.week!.length).toBeGreaterThanOrEqual(8);
+    expect(INTERIORS.boutique.displays!.basic!.length).toBeGreaterThanOrEqual(7);
+  });
+
   for (const spec of Object.values(INTERIORS)) {
     it(`${spec.id}: props fit, don't overlap and leave the spots reachable`, () => {
       expect(PLACE_BY_ID[spec.id]).toBeTruthy();
@@ -110,6 +118,22 @@ describe('Interiors', () => {
         expect(blocked.has(key(spec.keeper.tile.x, spec.keeper.tile.y)), 'keeper stands on furniture').toBe(false);
         blocked.add(key(spec.keeper.tile.x, spec.keeper.tile.y));
       }
+      for (const f of spec.folk ?? []) {
+        expect(blocked.has(key(f.tile.x, f.tile.y)), `${f.name} stands on furniture`).toBe(false);
+        blocked.add(key(f.tile.x, f.tile.y));
+      }
+      for (const sg of spec.signs ?? []) if (sg.y != null) {
+        expect(blocked.has(key(sg.x, sg.y)), `sign ${sg.text} overlaps`).toBe(false);
+        blocked.add(key(sg.x, sg.y));
+      }
+      // Every stand is clear, and you can walk up to the tile in front of it with all of them full.
+      const stands = Object.values(spec.displays ?? {}).flat();
+      for (const t of stands) {
+        expect(blocked.has(key(t.x, t.y)), `stand at ${t.x},${t.y} is clear`).toBe(false);
+        blocked.add(key(t.x, t.y));
+      }
+      expect(new Set(stands.map((t) => key(t.x, t.y))).size).toBe(stands.length);
+      for (const t of stands) expect(findPath(INTERIOR_DOOR, { x: t.x, y: t.y + 1 }, blocked, floor), `stand at ${t.x},${t.y} reachable`).not.toBeNull();
       expect(blocked.has(key(INTERIOR_DOOR.x, INTERIOR_DOOR.y))).toBe(false);
       for (const s of spec.spots) {
         expect(blocked.has(key(s.approach.x, s.approach.y)), `${s.id} approach is free`).toBe(false);

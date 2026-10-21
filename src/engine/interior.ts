@@ -8,7 +8,7 @@ import { footprint, ITEM_BY_KEY } from '../data/catalog';
 import { drawText, textWidth } from './art/font';
 import { billboard, pbox, spriteTexture, dispose } from './art/kit';
 import { solid } from './art/paint';
-import { INTERIOR_DOOR, type InteriorSpec } from '../data/town';
+import { INTERIOR_DOOR, type DisplayGroup, type InteriorSpec, type ShopSign } from '../data/town';
 import type { ThemeKey } from '../data/themes';
 import { AreaScene, type AreaEvents } from './area';
 import { Actor } from './actor';
@@ -23,8 +23,11 @@ const HALF = 3.5;
 
 /** One thing on show this week: a piece of furniture on a stand, or an outfit on a mannequin. */
 export type StockEntry =
-  | { id: string; kind: 'item'; key: string; price: string }
-  | { id: string; kind: 'piece'; key: string; price: string; look: AvatarLook; name: string };
+  | { id: string; kind: 'item'; key: string; price: string; group?: DisplayGroup }
+  | { id: string; kind: 'piece'; key: string; price: string; look: AvatarLook; name: string; group?: DisplayGroup };
+
+/** Plinth colors for each display: this week's pieces, the next step up, everyday basics. */
+const PLINTH: Record<DisplayGroup, [string, string]> = { week: ['#8A6244', '#C8A074'], step: ['#9A7A3A', '#E8C060'], basic: ['#8A8A96', '#C8C8D0'] };
 
 export class InteriorScene extends AreaScene {
   readonly shell: RoomShell;
@@ -38,8 +41,12 @@ export class InteriorScene extends AreaScene {
 
   constructor(r: ConstructorParameters<typeof AreaScene>[0], themeKey: ThemeKey, readonly spec: InteriorSpec, looks: { me: AvatarLook; partner: AvatarLook }, events: AreaEvents) {
     const floor: FloorPlan = { w: spec.w, d: spec.d, rooms: [{ id: 'main', name: spec.id, x: 0, y: 0, w: spec.w, d: spec.d }] };
-    super(r, themeKey, floor, looks, events, { pitch: 0.66, fitW: 10.6 * Math.max(1, Math.max(spec.w, spec.d) / 7) }, INTERIOR_DOOR);
-    this.camFixed = new THREE.Vector3(-HALF + spec.w / 2, 1.05, -HALF + spec.d / 2 + 0.25);
+    const big = spec.w > 9 || spec.d > 7;
+    super(r, themeKey, floor, looks, events, { pitch: 0.66, fitW: big ? 11.6 : 10.6 * Math.max(1, Math.max(spec.w, spec.d) / 7) }, INTERIOR_DOOR);
+    if (big) {
+      // A roomy shop: the camera follows you, staying over the floor.
+      this.camBounds = { x: [-HALF + 3.6, -HALF + spec.w - 3.2], z: [-HALF + 2.6, -HALF + spec.d - 2.6] };
+    } else this.camFixed = new THREE.Vector3(-HALF + spec.w / 2, 1.05, -HALF + spec.d / 2 + 0.25);
     this.sun.visible = false;
     this.hemi.visible = false;
     this.shell = new RoomShell(this.theme, { wallpaper: spec.wallpaper, wallTint: spec.wallTint, floor: spec.floor, floorTint: spec.floorTint ?? null, curtains: false }, floor);
@@ -99,6 +106,7 @@ export class InteriorScene extends AreaScene {
       const at = box ? new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y + 0.4, (box.min.z + box.max.z) / 2) : new THREE.Vector3(-HALF + s.approach.x + 0.5, 1.4, -HALF + s.approach.y + 0.5);
       this.addHotspot({ id: s.id, kind: s.kind, label: s.label, approach: s.approach, at }, root ? [root] : []);
     }
+    for (const sg of spec.signs ?? []) this.scene.add(this.sign(sg));
     const k = spec.keeper;
     if (k) {
       const actor = new Actor(npcLook(k.look), k.tile, false);
@@ -106,6 +114,13 @@ export class InteriorScene extends AreaScene {
       this.addNpc({ id: 'keeper', actor, route: [k.tile], seed: k.look, name: k.name, line: k.line });
       this.blocked.add(key(k.tile.x, k.tile.y));
     }
+    (spec.folk ?? []).forEach((f, i) => {
+      const actor = new Actor(npcLook(f.look), f.tile, false);
+      actor.facing = f.facing;
+      actor.holdFacing = true;
+      this.addNpc({ id: `folk${i}`, actor, route: [f.tile], seed: f.look + 30, name: f.name, line: f.line });
+      this.blocked.add(key(f.tile.x, f.tile.y));
+    });
   }
 
   private lampSpots: { pos: THREE.Vector3; strength: number }[] = [];
@@ -125,18 +140,31 @@ export class InteriorScene extends AreaScene {
     const sig = JSON.stringify(entries);
     if (sig === this.stockSig) return;
     this.stockSig = sig;
-    const slots = this.spec.displays ?? [];
+    const groups = this.spec.displays ?? {};
+    const slots = Object.values(groups).flat();
     for (const c of [...this.stock.children]) { this.stock.remove(c); dispose(c); }
     for (const id of this.stockIds) { this.hotspots.delete(id); this.removeNpc(id); }
     this.pickables = this.pickables.filter((o) => !o.userData.stock);
     this.stockIds = [];
     for (const t of slots) this.blocked.delete(key(t.x, t.y));
-    if (this.spec.keeper) this.blocked.add(key(this.spec.keeper.tile.x, this.spec.keeper.tile.y));
-    entries.slice(0, slots.length).forEach((e, i) => {
-      const t = slots[i];
+    for (const k of [this.spec.keeper, ...(this.spec.folk ?? [])]) if (k) this.blocked.add(key(k.tile.x, k.tile.y));
+    // Fill each display with its own kind of stock, in order; anything without a home of its own
+    // goes on this week's stands.
+    const used: Partial<Record<DisplayGroup, number>> = {};
+    const placed: { e: StockEntry; t: { x: number; y: number }; group: DisplayGroup }[] = [];
+    for (const e of entries) {
+      const want: DisplayGroup = e.group && groups[e.group] ? e.group : 'week';
+      const n = used[want] ?? 0;
+      const t = groups[want]?.[n];
+      if (!t) continue;
+      used[want] = n + 1;
+      placed.push({ e, t, group: want });
+    }
+    placed.forEach(({ e, t, group }, i) => {
       const g = new THREE.Group();
       g.position.set(-HALF + t.x + 0.5, 0, -HALF + t.y + 0.5);
-      g.add(pbox(-0.43, 0, -0.43, 0.86, 0.34, 0.86, { sides: solid('#8A6244'), top: solid('#C8A074') }));
+      const [side, top] = PLINTH[group];
+      g.add(pbox(-0.43, 0, -0.43, 0.86, 0.34, 0.86, { sides: solid(side), top: solid(top) }));
       g.add(this.priceTag(e.price));
       this.blocked.add(key(t.x, t.y));
       const approach = { x: t.x, y: t.y + 1 };
@@ -147,7 +175,7 @@ export class InteriorScene extends AreaScene {
         model.add(art.group);
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
-        const k = Math.min(1, 0.8 / Math.max(size.x, size.z, 0.01), 1.15 / Math.max(size.y, 0.01));
+        const k = Math.min(1, 0.86 / Math.max(size.x, size.z, 0.01), 1.3 / Math.max(size.y, 0.01));
         model.scale.setScalar(k);
         const c = box.getCenter(new THREE.Vector3());
         model.position.set(-c.x * k, 0.34 - box.min.y * k, -c.z * k);
@@ -170,6 +198,30 @@ export class InteriorScene extends AreaScene {
       }
       this.stock.add(g);
     });
+  }
+
+  /** A shop sign: a board high on the back wall, or a little standing sign on the floor. */
+  private sign(sg: ShopSign) {
+    const w = textWidth(sg.text) + 8;
+    const tex = spriteTexture(w, 11, (g, ww, hh) => {
+      g.fillStyle = '#5E4630'; g.fillRect(0, 0, ww, hh);
+      g.fillStyle = '#FFF4DC'; g.fillRect(1, 1, ww - 2, hh - 2);
+      g.fillStyle = '#E8C060'; g.fillRect(1, hh - 2, ww - 2, 1);
+      drawText(g, sg.text, Math.floor((ww - textWidth(sg.text)) / 2), 3, '#5E4630');
+    });
+    if (sg.y == null) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w / 14, 11 / 14), new THREE.MeshLambertMaterial({ map: tex }));
+      m.position.set(-HALF + sg.x, 3.55, -HALF + 0.03);
+      return m;
+    }
+    const g = new THREE.Group();
+    g.position.set(-HALF + sg.x + 0.5, 0, -HALF + sg.y + 0.5);
+    g.add(pbox(-0.04, 0, -0.04, 0.08, 1.15, 0.08, { sides: solid('#5E4630') }));
+    const m = billboard(tex, w / 18, 11 / 18, { cast: false });
+    m.position.set(0, 1.1, 0);
+    g.add(m);
+    this.blocked.add(key(sg.x, sg.y));
+    return g;
   }
 
   private priceTag(text: string) {
