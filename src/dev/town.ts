@@ -3,6 +3,7 @@ import { THEMES, type ThemeKey } from '../data/themes';
 import { DEFAULT_LOOK } from '../engine/art/avatar';
 import { Renderer } from '../engine/renderer';
 import { INTERIORS } from '../data/town';
+import { boutiqueEntries, furnitureEntries } from '../ui/shopstock';
 import { InteriorScene } from '../engine/interior';
 import { TownScene } from '../engine/town';
 
@@ -26,6 +27,8 @@ const x = Number(q.get('x') ?? (inside ? 0 : 6)), y = Number(q.get('y') ?? (insi
 town.placeMe({ x, y });
 if (q.get('partner') !== 'off') town.setPartnerHere(true, { x: x + 1, y });
 if (q.has('locked') && !inside) town.setLocked(new Set(['flowers', 'parcel', 'labs']));
+if (inside === 'maple') (town as unknown as InteriorScene).setStock(furnitureEntries(new Date(), { unlocks: [], inventory: [], placements: [{ item: 'bed_mat' }] }));
+if (inside === 'boutique') (town as unknown as InteriorScene).setStock(boutiqueEntries(new Date(), [], looks));
 if (q.has('hour')) town.hourOverride = Number(q.get('hour'));
 town.start();
 const fit = () => r.resize(innerWidth, innerHeight);

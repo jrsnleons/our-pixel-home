@@ -6,7 +6,7 @@ import { InstallRow } from '../overlays/Install';
 import { setSfx, sfx } from '../../audio/audio';
 import { ESV_NOTICE } from '../../data/bible';
 import { THEME_ORDER, THEMES } from '../../data/themes';
-import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, sheet, snap, storeTab, toast, tourReplay } from '../../state/store';
+import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, sheet, snap, toast, tourReplay } from '../../state/store';
 import { hasWardrobe } from '../../net/rules';
 import { EditorStage } from '../AvatarEditor';
 import { Field, Icon, Sheet, Tabs } from '../kit';
@@ -30,7 +30,6 @@ export function Me({ onClose }: { onClose: () => void }) {
 function MyLook() {
   const s = snap.value!;
   const has = hasWardrobe(s);
-  const go = (tab: string) => { sfx('open'); storeTab.value = tab; sheet.value = 'store'; };
   return (
     <div class="col">
       <EditorStage look={s.me.look} />
@@ -38,11 +37,10 @@ function MyLook() {
         <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, tap your clothes rack, mirror or wardrobe in the room.</p>
       ) : (
         <>
-          <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, you’ll need somewhere to get changed. A clothes rack is in the Store under Decor.</p>
-          <button class="btn block" onClick={() => go('decor')}>Find a clothes rack</button>
+          <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, you’ll need somewhere to get changed. A clothes rack is sold at Maple Furnishings on Maple Street, out your front door.</p>
         </>
       )}
-      <button class="btn soft block" onClick={() => go('boutique')}><Icon name="store" size="s" />This week’s Boutique</button>
+      <p class="small center muted" style={{ margin: 0 }}>New clothes arrive at The Boutique every Monday.</p>
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { THEMES } from '../../data/themes';
 import type { HomeScene, PlacingState } from '../../engine/scene';
 import { slotsUsed } from '../../net/rules';
 import type { RoomStyleRow } from '../../net/types';
-import { act, actOptimistic, prefs, sheet, snap, toast } from '../../state/store';
+import { act, actOptimistic, prefs, snap, toast } from '../../state/store';
 import { Icon, Tabs } from '../kit';
 import { ItemThumb } from '../ItemThumb';
 
@@ -150,7 +150,7 @@ export function Decorate({ scene, onClose, bind }: { scene: HomeScene; onClose: 
           <Tabs value={tab} options={[{ key: 'box' as Tab, label: `Box ${used}/${slots}` }, { key: 'walls' as Tab, label: 'Walls' }, { key: 'floor' as Tab, label: 'Floor' }]} onChange={(k) => { setTab(k); sfx('tap'); }} />
           {tab === 'box' && (
             <>
-              {s.inventory.length === 0 && <p class="small muted" style={{ margin: '0 4px 6px' }}>Your box is empty. Buy something in the Store, or tap an item in the room to move or store it.</p>}
+              {s.inventory.length === 0 && <p class="small muted" style={{ margin: '0 4px 6px' }}>Your box is empty. Buy something at Maple Furnishings, or tap an item in the room to move or store it.</p>}
               <div class="slots">
                 {cells.map((c) => c ? (
                   <button class={`slot ${c.id.startsWith('pending:') ? 'pending' : ''}`} disabled={c.id.startsWith('pending:')} aria-selected={placingInv === c.id} onClick={() => startFromBox(c.id)} title={ITEM_BY_KEY[c.item]?.name}>
@@ -160,8 +160,7 @@ export function Decorate({ scene, onClose, bind }: { scene: HomeScene; onClose: 
                 ) : <div class="slot empty" />)}
               </div>
               <div class="row" style={{ justifyContent: 'space-between', marginTop: '6px' }}>
-                <span class="tiny muted">Tap an item in the room to move, turn or store it.</span>
-                <button class="btn soft small" onClick={() => { sheet.value = 'store'; }}><Icon name="store" size="s" />Store</button>
+                <span class="tiny muted">Tap an item in the room to move, turn or store it. More furniture is at Maple Furnishings on Maple Street.</span>
               </div>
             </>
           )}
@@ -193,7 +192,7 @@ function StylePicker({ kind }: { kind: 'wallpaper' | 'floor' }) {
           const have = owned.has(i.key);
           return (
             <button class="slot" aria-selected={current === i.key} style={{ opacity: have ? 1 : 0.4 }} title={i.name}
-              onClick={() => { if (have) void set(kind === 'wallpaper' ? { wallpaper: i.key } : { floor: i.key }); else { toast(`${i.name} is in the Store.`); } }}>
+              onClick={() => { if (have) void set(kind === 'wallpaper' ? { wallpaper: i.key } : { floor: i.key }); else { toast(`${i.name} is sold at Maple Furnishings.`); } }}>
               <ItemThumb item={i.key} theme={theme} alt={i.name} />
               {!have && <span class="qty"><Icon name="lock" size="s" /></span>}
             </button>

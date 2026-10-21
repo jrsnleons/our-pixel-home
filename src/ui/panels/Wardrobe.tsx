@@ -7,7 +7,7 @@ import { sfx } from '../../audio/audio';
 import { cleanWear, ownedClothes, wearOf, type Wear } from '../../data/clothes';
 import { avatarThumb, type AvatarLook } from '../../engine/art/avatar';
 import { SAVED_LOOKS } from '../../net/rules';
-import { act, partner, sheet, snap, storeTab, toast } from '../../state/store';
+import { act, partner, snap, toast } from '../../state/store';
 import { AvatarEditor, AvatarPreview, ClothesPicker, EditorStage } from '../AvatarEditor';
 import { Icon, Sheet, Tabs } from '../kit';
 
@@ -21,11 +21,10 @@ export function Wardrobe({ onClose }: { onClose: () => void }) {
   const them = partner.value;
   const changed = JSON.stringify(look) !== JSON.stringify({ ...s.me.look, wear: wearOf(s.me.look) });
   const save = async () => { const ok = await act('set_look', { look }); if (ok) { sfx('pop'); toast('Looking good.'); } };
-  const shop = () => { sfx('open'); storeTab.value = 'boutique'; sheet.value = 'store'; };
   const options: { key: Tab; label: string }[] = [{ key: 'me', label: 'Me' }, { key: 'looks', label: 'Saved looks' }];
   if (them) options.push({ key: 'partner', label: `For ${them.name}` });
   return (
-    <Sheet title="Wardrobe" onClose={onClose} size="tall" head={<button class="btn ghost small" onClick={shop}><Icon name="store" size="s" />Boutique</button>}>
+    <Sheet title="Wardrobe" onClose={onClose} size="tall">
       <Tabs value={tab} onChange={(t) => { sfx('tap'); setTab(t); }} options={options} />
       {tab === 'me' && (
         <div class="col">

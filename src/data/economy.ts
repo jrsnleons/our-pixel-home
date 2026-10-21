@@ -102,7 +102,7 @@ export function milestone(since: string | null, day: string): { label: string; c
 
 /** "First week together" starter quests. Each pays into the shared wallet once. */
 export const QUESTS = [
-  { key: 'buy_bed', label: 'Buy a real bed', hint: 'Store → Furniture', coins: 60 },
+  { key: 'buy_bed', label: 'Buy a real bed', hint: 'Maple Furnishings', coins: 60 },
   { key: 'place_table', label: 'Place a table', hint: 'Decorate → your storage box', coins: 40 },
   { key: 'first_game', label: 'Play your first game', hint: 'Tap the games table', coins: 50 },
   { key: 'first_note', label: 'Write your first note', hint: 'Notes → Notebooks', coins: 40 },

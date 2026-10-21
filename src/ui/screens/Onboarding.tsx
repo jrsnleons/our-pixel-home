@@ -23,7 +23,7 @@ export function Boot({ onEnter, ready }: { onEnter: () => void; ready?: boolean 
 
 const INTRO = [
   { title: 'A little home for the two of you', text: 'The same cozy room on both of your phones, wherever you are. See each other, send hearts and hang out.', art: 'pair' },
-  { title: 'Play, work and decorate together', text: 'Games at the table, café shifts for coins, and furniture from the Store to make the place yours.', art: 'play' },
+  { title: 'Play, work and decorate together', text: 'Games at the table, café shifts for coins, and furniture from the shops on Maple Street to make the place yours.', art: 'play' },
   { title: 'Keep each other close to God', text: 'Share prayer requests, keep your own quiet time with the Lord, and cheer each other on.', art: 'pray' },
 ] as const;
 

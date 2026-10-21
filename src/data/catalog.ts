@@ -163,15 +163,6 @@ export const STARTER_COINS = 300;
 export const STARTER_SLOTS = 24;
 export const SLOT_UPGRADE = 8;
 
-export const STORE_TABS: { key: string; label: string; cats: Category[] }[] = [
-  { key: 'furniture', label: 'Furniture', cats: ['bed', 'table', 'seating', 'lighting', 'storage'] },
-  { key: 'decor', label: 'Decor', cats: ['decor', 'plant', 'rug', 'faith'] },
-  { key: 'wall', label: 'Wall', cats: ['wall'] },
-  { key: 'styles', label: 'Walls & floors', cats: ['wallpaper', 'floor'] },
-  { key: 'boutique', label: 'Boutique', cats: [] },
-  { key: 'more', label: 'More', cats: ['upgrade'] },
-];
-
 /** Footprint after rotating by rot quarter turns. */
 export function footprint(def: ItemDef, rot: number): [number, number] {
   const [w, d] = def.size ?? [1, 1];

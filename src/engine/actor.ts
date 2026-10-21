@@ -112,6 +112,9 @@ export class Actor {
     if (!path.length) this.onArrive = null;
   }
 
+  /** Stand on something this high (a display plinth) without walking anywhere. */
+  perch(height: number) { this.elevation = height; this.elevTarget = height; }
+
   stopWalking() { this.path = []; this.onArrive = null; }
 
   /** Teleport (used when furniture moves under someone, or on first load). */

@@ -19,3 +19,6 @@ export function areaName(id: AreaId): string {
   const p = PLACE_BY_ID[insideOf(id) ?? ''];
   return p ? p.name : 'Maple Street';
 }
+
+/** Which shop sheet is open, and the item or piece to show first (tapped on a display). */
+export const shopCtx = signal<{ shop: 'maple' | 'boutique'; focus?: string } | null>(null);

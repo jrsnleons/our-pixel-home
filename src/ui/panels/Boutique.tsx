@@ -1,12 +1,11 @@
-// The Boutique tab of the Store: twelve themed pieces that change every Monday, the basics
-// rack that never changes, and a fitting room that shows each colorway on you.
+// The Boutique's rack: eight themed pieces that change every Monday, the basics
+// that never change, and a fitting room that shows each colorway on you.
 
 import { useEffect, useState } from 'preact/hooks';
 import { sfx } from '../../audio/audio';
 import { boutique, colorPrice, nextRackAt, ownedClothes, ownsPiece, PIECES, SLOT_NAMES, THEMES, wearOf, worn, type Piece } from '../../data/clothes';
 import { avatarThumb, type AvatarLook } from '../../engine/art/avatar';
-import { hasWardrobe } from '../../net/rules';
-import { act, coins, sheet, snap } from '../../state/store';
+import { act, coins, snap } from '../../state/store';
 import { AvatarPreview, putOn } from '../AvatarEditor';
 import { Coin, Icon, Sheet } from '../kit';
 
@@ -51,13 +50,13 @@ export function BoutiqueTab({ onPick }: { onPick: (p: Piece) => void }) {
         <span class="tiny muted">New rack in {left(nextRackAt(now).getTime() - now.getTime())}</span>
       </div>
       <div class="grid">{rack.pieces.map(card)}</div>
-      <span class="small muted" style={{ marginTop: '6px' }}>Basics, always here</span>
+      <span class="small muted" style={{ marginTop: '6px' }}>Always on the rack</span>
       <div class="grid">{basics.map(card)}</div>
     </div>
   );
 }
 
-export function PieceDetail({ piece: p, onBack, onClose, onDecor }: { piece: Piece; onBack: () => void; onClose: () => void; onDecor: () => void }) {
+export function PieceDetail({ piece: p, onBack, onClose }: { piece: Piece; onBack: () => void; onClose: () => void }) {
   const s = snap.value!;
   const owned = ownedClothes(s.unlocks);
   const [color, setColor] = useState(() => Math.max(0, p.colors.findIndex((_, i) => !owned.has(worn(p.key, i)))));
@@ -65,14 +64,12 @@ export function PieceDetail({ piece: p, onBack, onClose, onDecor }: { piece: Pie
   const have = owned.has(worn(p.key, color));
   const price = colorPrice(owned, p.key);
   const afford = coins.value >= price;
-  const canChange = hasWardrobe(s);
   const buy = async () => {
     setBusy(true);
     const ok = await act('buy_clothes', { key: p.key, color });
     setBusy(false);
     if (ok) sfx('coin'); else sfx('error');
   };
-  const go = (to: 'wardrobe' | 'decor') => { sfx('open'); if (to === 'decor') onDecor(); else sheet.value = 'wardrobe'; };
   return (
     <Sheet title={p.name} onClose={onClose} size="tall" head={<button class="btn ghost small icon" onClick={onBack} aria-label="Back"><Icon name="back" size="s" /></button>}>
       <div class="col" style={{ alignItems: 'center', gap: '8px' }}>
@@ -91,16 +88,14 @@ export function PieceDetail({ piece: p, onBack, onClose, onDecor }: { piece: Pie
       </div>
       <div style={{ height: '16px' }} />
       {have ? (
-        canChange
-          ? <button class="btn block" onClick={() => go('wardrobe')}>Wear it (opens your wardrobe)</button>
-          : <button class="btn soft block" onClick={() => go('decor')}>Get a clothes rack to change into it</button>
+        <p class="small center" style={{ margin: 0 }}>It’s yours. Change into it at a clothes rack, mirror or wardrobe at home.</p>
       ) : (
         <button class="btn block" disabled={busy || !afford} onClick={buy}>
           {afford ? <>Buy {p.colorNames[color]} for <Coin n={price} /></> : <>Need <Coin n={price - coins.value} /> more</>}
         </button>
       )}
       {!have && ownsPiece(owned, p.key) && <p class="tiny muted center">Half price: you already have this in another color.</p>}
-      {!have && !canChange && <p class="tiny muted center">You’ll change at a clothes rack, mirror or wardrobe in your room.</p>}
+      {!have && <p class="tiny muted center">You’ll change at a clothes rack, mirror or wardrobe in your room.</p>}
     </Sheet>
   );
 }

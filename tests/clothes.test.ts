@@ -24,7 +24,7 @@ function placeRack(c: R.Ctx) {
 }
 
 describe('the weekly Boutique', () => {
-  it('shows the same 12 pieces all week and changes on Monday (UTC)', () => {
+  it('shows the same eight pieces all week and changes on Monday (UTC)', () => {
     const a = boutique(MON), b = boutique(new Date('2026-10-25T23:59:00Z')), c = boutique(new Date('2026-10-26T00:00:00Z'));
     expect(a.pieces).toHaveLength(RACK_SIZE);
     expect(b.pieces.map((p) => p.key)).toEqual(a.pieces.map((p) => p.key));

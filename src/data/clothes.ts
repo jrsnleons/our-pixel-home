@@ -2,6 +2,8 @@
 // few colorways. The server bundles this file too, so prices, the weekly Boutique rack and
 // what counts as owned are decided in one place. Painting lives in engine/art/clothes.ts.
 
+import { bagPick } from './bag';
+
 export type Slot = 'hat' | 'face' | 'top' | 'bottom' | 'shoes' | 'bag';
 export const SLOTS: Slot[] = ['top', 'bottom', 'shoes', 'hat', 'face', 'bag'];
 export const SLOT_NAMES: Record<Slot, string> = { top: 'Tops', bottom: 'Bottoms', shoes: 'Shoes', hat: 'Hats', face: 'Glasses', bag: 'Bags' };
@@ -219,7 +221,9 @@ export function colorPrice(owned: Set<string>, key: string): number {
 
 const DAY = 86_400_000;
 const EPOCH_MONDAY = Date.UTC(1970, 0, 5);
-export const RACK_SIZE = 12;
+export const RACK_SIZE = 8;
+/** How many of the rack are the week's theme; the rest is a mix of everything else. */
+const THEMED = 6;
 
 /** Weeks since a Monday, in UTC: everyone's rack changes at the same moment. */
 export function weekIndex(now: Date): number {
@@ -230,30 +234,19 @@ export function nextRackAt(now: Date): Date {
   return new Date(EPOCH_MONDAY + (weekIndex(now) + 1) * 7 * DAY);
 }
 
-function seeded(seed: number) {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function shuffled<T>(list: T[], r: () => number): T[] {
-  const a = list.slice();
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a;
-}
-
-/** This week's theme and its rack of 12: mostly pieces of the theme, topped up with others. */
+/**
+ * This week's theme and its rack of eight: six pieces of the theme and two from elsewhere.
+ * Each theme goes through its own shuffle bag, so a theme's pieces all show up before any repeats.
+ */
 export function boutique(now: Date): { week: number; theme: ThemeKey; pieces: Piece[] } {
   const week = weekIndex(now);
-  const theme = THEME_ORDER[((week % THEME_ORDER.length) + THEME_ORDER.length) % THEME_ORDER.length];
-  const r = seeded(week * 7919 + 17);
+  const slot = ((week % THEME_ORDER.length) + THEME_ORDER.length) % THEME_ORDER.length;
+  const theme = THEME_ORDER[slot];
+  const visit = Math.floor(week / THEME_ORDER.length);
   const pool = PIECES.filter((p) => !p.basic);
-  const themed = shuffled(pool.filter((p) => p.tags.includes(theme)), r).slice(0, 9);
-  const rest = shuffled(pool.filter((p) => !themed.includes(p)), r).slice(0, RACK_SIZE - themed.length);
+  const themedPool = pool.filter((p) => p.tags.includes(theme));
+  const themed = bagPick(themedPool, THEMED, visit * THEMED, slot * 131 + 17);
+  const rest = bagPick(pool.filter((p) => !p.tags.includes(theme)), RACK_SIZE - themed.length, week * (RACK_SIZE - THEMED), 4421);
   const order: Slot[] = ['top', 'bottom', 'shoes', 'hat', 'face', 'bag'];
   const pieces = [...themed, ...rest].sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot));
   return { week, theme, pieces };

@@ -167,6 +167,8 @@ export interface InteriorSpec {
   props: Prop[];
   spots: Spot[];
   keeper?: Keeper;
+  /** Shops: the tiles of the display row where this week's stock is shown (stands or mannequins). */
+  displays?: Tile[];
 }
 
 /** Where you stand when you walk in (just inside the door). */
@@ -253,4 +255,49 @@ export const INTERIORS: Record<string, InteriorSpec> = {
     ],
     keeper: { name: 'Dr. Ng', line: 'Two desks, two kinds of trouble. Pick one.', tile: { x: 3, y: 5 }, look: 4, facing: '+z' },
   },
+};
+
+const row = (y: number, from: number, to: number): Tile[] => Array.from({ length: to - from + 1 }, (_, i) => ({ x: from + i, y }));
+
+INTERIORS.maple = {
+  id: 'maple', w: 9, d: 7, floor: 'fl_pine', wallpaper: 'wp_planks', wallTint: '#E6D2B0',
+  props: [
+    { id: 'counterA', item: 'desk', x: 3, y: 4 },
+    { id: 'counterB', item: 'desk', x: 5, y: 4 },
+    { id: 'samples', item: 'store_bookshelf', x: 7, y: 5 },
+    { item: 'plant_monstera', x: 0, y: 6 },
+    { item: 'light_floor', x: 8, y: 3 },
+    { item: 'rug_runner', x: 1, y: 3 },
+    { item: 'wall_lights', x: 0, y: 2, surface: 'back' },
+    { item: 'wall_shelf', x: 7, y: 1, surface: 'back' },
+  ],
+  spots: [
+    { id: 'maple-counter', kind: 'shop', label: 'Everything on the shelves', approach: { x: 3, y: 5 }, prop: 'counterA' },
+    { id: 'maple-counter2', kind: 'shop', label: 'Everything on the shelves', approach: { x: 5, y: 5 }, prop: 'counterB' },
+    { id: 'maple-samples', kind: 'shop', label: 'Walls and floors', approach: { x: 7, y: 6 }, prop: 'samples' },
+  ],
+  keeper: { name: 'Mr. Maple', line: 'A few new pieces every Monday. Take your time.', tile: { x: 2, y: 4 }, look: 6, facing: '+x' },
+  displays: row(1, 1, 8),
+};
+
+INTERIORS.boutique = {
+  id: 'boutique', w: 9, d: 7, floor: 'fl_parquet', wallpaper: 'wp_scallop', wallTint: '#E2D2F0',
+  props: [
+    { id: 'counterA', item: 'desk', x: 3, y: 4 },
+    { id: 'counterB', item: 'desk', x: 5, y: 4 },
+    { item: 'clothes_rack', x: 8, y: 4 },
+    { item: 'clothes_rack', x: 8, y: 5 },
+    { item: 'mirror', x: 7, y: 6 },
+    { item: 'plant_fern', x: 0, y: 6 },
+    { item: 'light_floor', x: 8, y: 3 },
+    { item: 'rug_round', x: 1, y: 3 },
+    { item: 'wall_lights', x: 0, y: 2, surface: 'back' },
+    { item: 'wall_poster', x: 7, y: 1, surface: 'back' },
+  ],
+  spots: [
+    { id: 'boutique-counter', kind: 'shop', label: 'The whole rack', approach: { x: 3, y: 5 }, prop: 'counterA' },
+    { id: 'boutique-counter2', kind: 'shop', label: 'The whole rack', approach: { x: 5, y: 5 }, prop: 'counterB' },
+  ],
+  keeper: { name: 'Priya', line: 'New rack every Monday. Everything fits you better than you think.', tile: { x: 2, y: 4 }, look: 3, facing: '+x' },
+  displays: row(1, 1, 8),
 };

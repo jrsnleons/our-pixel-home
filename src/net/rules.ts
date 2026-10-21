@@ -8,6 +8,7 @@ import { layoutOf } from '../core/layout';
 import { ITEM_BY_KEY, SLOT_UPGRADE, STARTER_COINS, STARTER_PLACEMENTS, STARTER_SLOTS, type ItemDef } from '../data/catalog';
 import { DAILY_LIMITS, QUESTS, REWARDS, SHIFT, jobLevel, milestone, shiftPayout } from '../data/economy';
 import { JOB_KEYS, JOBS, jobLock, jobXp, type JobKey } from '../data/jobs';
+import { onShelf } from '../data/stock';
 import { cleanWear, colorPrice, onSale, ownedClothes, parseWorn, PIECES, wearOf, worn, type Wear } from '../data/clothes';
 import { INTERACTION_BY_ID } from '../data/interactions';
 import { DRAW_ROUNDS, DRAW_WORDS, normalizeGuess } from '../data/words';
@@ -145,6 +146,8 @@ export function setCouple(c: Ctx, patch: { since?: string | null; nextVisit?: st
 export function buy(c: Ctx, key: string): { invId?: string } {
   const d = def(key);
   if (d.starter && d.price === 0) throw new RuleError('You already have this.');
+  if ((d.kind === 'style' || (d.kind === 'upgrade' && d.unique)) && c.w.unlocks.includes(key)) throw new RuleError('You already own this.');
+  if (!onShelf(key, c.now, { unlocks: c.w.unlocks, inventory: c.w.inventory, placements: c.w.placements })) throw new RuleError('Maple Furnishings doesn’t have that out right now. It may be back another week.');
   if (d.kind === 'style' || (d.kind === 'upgrade' && d.unique)) {
     if (c.w.unlocks.includes(key)) throw new RuleError('You already own this.');
     spend(c, d.price, `buy:${key}`);

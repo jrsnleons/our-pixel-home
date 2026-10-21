@@ -130,6 +130,14 @@ export abstract class AreaScene {
     this.npcs.push(npc);
   }
 
+  protected removeNpc(id: string) {
+    const i = this.npcs.findIndex((n) => n.id === id);
+    if (i < 0) return;
+    const [n] = this.npcs.splice(i, 1);
+    this.scene.remove(n.actor.group);
+    n.actor.dispose();
+  }
+
   // ---------- Lifecycle ----------
 
   /** Make this the scene on screen. */

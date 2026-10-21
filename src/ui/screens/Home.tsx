@@ -18,7 +18,7 @@ import { TownScene } from '../../engine/town';
 import type { LocalBackend } from '../../net/local';
 import type { GameKind, LiveMsg } from '../../net/types';
 import { loadLast, saveLast } from '../../state/resume';
-import { area, areaName, inside, insideOf, partnerArea, type AreaId } from '../../state/area';
+import { area, areaName, inside, insideOf, partnerArea, shopCtx, type AreaId } from '../../state/area';
 import { act, backend, coins, couple, day, markFeedSeen, partner, partnerLastSeen, partnerOnline, prefs, sheet, snap, toast, tourReplay, unseen, type Sheet } from '../../state/store';
 import { Coin, Icon } from '../kit';
 import { FurnitureBubble, MeBubble, PartnerBubble, SayBubble } from '../overlays/Bubbles';
@@ -28,7 +28,8 @@ import { InteractionWheel } from '../overlays/Wheel';
 import { Decorate } from '../panels/Decorate';
 import { Notes, type NotesTab } from '../panels/Notes';
 import { Me } from '../panels/Me';
-import { Store } from '../panels/Store';
+import { Shop } from '../panels/Shop';
+import { boutiqueEntries, furnitureEntries } from '../shopstock';
 import { savedShift, Work } from '../panels/Work';
 import { deliverShiftMsg } from '../jobs/common';
 import { OutfitGift, Wardrobe } from '../panels/Wardrobe';
@@ -102,7 +103,7 @@ export function Home() {
     setScene(sc);
     // Reopen what was open: a solo shift in progress first, otherwise the last sheet.
     if (savedShift()) sheet.value = 'work';
-    else if (last?.sheet && last.sheet !== 'decorate') sheet.value = last.sheet;
+    else if (last?.sheet && last.sheet !== 'decorate' && last.sheet !== 'shop' && last.sheet !== 'work') sheet.value = last.sheet;
     if (last?.notesTab) setNotesTab(last.notesTab as NotesTab);
     // Music needs a tap before the phone lets it play.
     if (last?.music) {
@@ -138,6 +139,18 @@ export function Home() {
   };
   const here = (): AreaScene | null => areas.current.active;
 
+  /** Put this week's stock on the display row of the shop I'm in (or standing in front of, for the first look). */
+  const stockShop = (placeId: string | null) => {
+    const st = snap.value;
+    if (!st || (placeId !== 'maple' && placeId !== 'boutique')) return;
+    const sc = areas.current.ins.get(placeId);
+    if (!sc) return;
+    const now = new Date();
+    sc.setStock(placeId === 'maple'
+      ? furnitureEntries(now, { unlocks: st.unlocks, inventory: st.inventory, placements: st.placements })
+      : boutiqueEntries(now, st.unlocks, { me: st.me.look, partner: st.partner?.look ?? null }));
+  };
+
   /** Show my partner in whatever place I'm in, if they are in it too (and online). */
   const showPartner = (at?: Tile) => {
     const s = snap.value;
@@ -172,6 +185,7 @@ export function Home() {
         t.start();
       } else {
         const i = getInside(insideOf(to)!);
+        stockShop(insideOf(to));
         at = INTERIOR_DOOR;
         i.placeMe(at);
         a.active = i;
@@ -190,12 +204,14 @@ export function Home() {
       sfx('tap');
       const id = insideOf(area.value);
       if (h.kind === 'exit') { goRef.current?.('town', id ?? undefined); return; }
+      if (h.kind === 'item') { shopCtx.value = { shop: 'maple', focus: h.id.slice(5) }; sheet.value = 'shop'; return; }
+      if (h.kind === 'shop') { shopCtx.value = { shop: id === 'boutique' ? 'boutique' : 'maple' }; sheet.value = 'shop'; return; }
       if (h.kind === 'work') { const sp = id ? INTERIORS[id]?.spots.find((q) => q.id === h.id) : null; if (id && sp) { setLobby({ place: PLACE_BY_ID[id], job: sp.job }); sheet.value = 'work'; } return; }
       const p = PLACE_BY_ID[h.id];
       if (!p) return;
       if (p.kind === 'home') { goRef.current?.('home'); return; }
-      if (p.kind === 'job' && INTERIORS[p.id]) {
-        const open = p.jobs!.some((j) => !jobLock(snap.value?.me, j));
+      if (INTERIORS[p.id] && (p.kind === 'job' || p.kind === 'shop')) {
+        const open = !p.jobs || p.jobs.some((j) => !jobLock(snap.value?.me, j));
         if (!open) {
           const lock = jobLock(snap.value?.me, p.jobs![0])!;
           toast(`${p.name} is hiring after ${lock.left} more ${JOBS[lock.after].name.toLowerCase()} ${lock.left === 1 ? 'shift' : 'shifts'}.`, 'info');
@@ -208,11 +224,23 @@ export function Home() {
     },
     npc: (id, at) => {
       sfx('tap');
+      if (id.startsWith('piece:')) { shopCtx.value = { shop: 'boutique', focus: id.slice(6) }; sheet.value = 'shop'; return; }
       const info = (here() as TownScene | InteriorScene | null)?.npcInfo(id);
       if (info) setTalk({ ...info, at });
     },
     partner: (at) => { if (!snap.value?.partner) return; sfx('heart'); here()?.fx.spawn('heart', here()!.partner.head(), { count: 3, spread: 0.4 }); backend.send({ t: 'heart' }); void act('heart', {}, { quiet: true }); void at; },
   };
+
+  // The shelves follow the calendar (new stock every Monday) and what you own (next steps, outfits on the mannequins).
+  useSignalEffect(() => {
+    const a = area.value;
+    void snap.value;
+    stockShop(insideOf(a));
+  });
+  useEffect(() => {
+    const t = setInterval(() => stockShop(insideOf(area.value)), 5 * 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Rooms and streets are built for one theme and one set of looks; rebuild them when those change.
   useSignalEffect(() => {
@@ -346,7 +374,7 @@ export function Home() {
     return () => { liveHandler = null; };
   }, [scene]);
 
-  // Draw the box and Store pictures while the phone is idle, so those sheets open instantly.
+  // Draw the box and shop pictures while the phone is idle, so those sheets open instantly.
   useEffect(() => {
     const t = setTimeout(() => {
       const s = snap.value;
@@ -423,9 +451,9 @@ export function Home() {
             <Icon name="heart" size="s" />
             <span><b>Day {day.value}</b><span class="sub">together</span></span>
           </button>
-          <button class="pill" onClick={() => open('store')} aria-label="Coins" data-tour="coins">
+          <div class="pill" aria-label="Coins" data-tour="coins">
             <Coin n={coins.value.toLocaleString()} />
-          </button>
+          </div>
           <div class="grow" />
           {s.quests.some((q) => !q.claimed) && (
             <button class="pill" onClick={() => open('quests')} aria-label="Starter quests" style={{ position: 'relative' }}>
@@ -490,7 +518,7 @@ export function Home() {
         </div>
       )}
 
-      {sheet.value === 'store' && <Store onClose={() => open(null)} />}
+      {sheet.value === 'shop' && <Shop onClose={() => open(null)} />}
       {sheet.value === 'work' && <Work onClose={() => { open(null); setLobby(null); }} joinShift={takeWorkJoin()} title={lobby ? lobby.place.name : 'Work'} jobs={lobby ? lobby.place.jobs ?? null : null} first={lobby?.job} />}
       {sheet.value === 'decorate' && scene && <Decorate scene={scene} onClose={() => open(null)} bind={(d, p) => { decorTapRef.current = d; placingRef.current = p; }} />}
       {sheet.value === 'notes' && <Notes onClose={() => open(null)} tab={notesTab} setTab={setNotesTab} />}
@@ -510,7 +538,7 @@ export function Home() {
       <div class={`areafade ${fade ? 'on' : ''}`} />
       {sheet.value !== 'decorate' && area.value === 'home' && (
         <nav class="bottombar">
-          {([['store', 'store', 'Store'], ['decorate', 'decorate', 'Decorate'], ['notes', 'notes', 'Notes'], ['me', 'me', 'Me']] as const).map(([k, icon, label]) => (
+          {([['decorate', 'decorate', 'Decorate'], ['notes', 'notes', 'Notes'], ['me', 'me', 'Me']] as const).map(([k, icon, label]) => (
             <button class="navbtn" aria-pressed={sheet.value === k} onClick={() => open(k)} data-tour={k}>
               <Icon name={icon} />
               <span>{label}</span>

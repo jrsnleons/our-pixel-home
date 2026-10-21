@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_LOOK } from '../src/engine/art/avatar';
 import * as R from '../src/net/rules';
+import { weekWith } from './shelf';
 import type { Profile } from '../src/net/types';
 
 let n = 0;
@@ -31,7 +32,8 @@ describe('store and inventory', () => {
   it('stacks small decor in one slot', () => {
     const { w, ana } = setup();
     w.couple.coins = 1000;
-    R.buy(ana(), 'candles'); R.buy(ana(), 'candles');
+    const day = weekWith(['candles']);
+    R.buy(ana(day), 'candles'); R.buy(ana(day), 'candles');
     expect(w.inventory).toHaveLength(1);
     expect(w.inventory[0].qty).toBe(2);
     expect(R.slotsUsed(w.inventory)).toBe(1);
@@ -49,7 +51,7 @@ describe('store and inventory', () => {
   it('styles are owned once and need buying before use', () => {
     const { w, ana } = setup();
     expect(() => R.setStyle(ana(), { ...w.couple.style, floor: 'fl_pine' })).toThrow();
-    R.buy(ana(), 'fl_pine');
+    R.buy(ana(weekWith(['fl_pine'])), 'fl_pine');
     R.setStyle(ana(), { ...w.couple.style, floor: 'fl_pine' });
     expect(() => R.buy(ana(), 'fl_pine')).toThrow('already own');
   });
@@ -109,7 +111,7 @@ describe('games', () => {
     const { w, ana, ben } = setup();
     expect(() => R.gameStart(ana(), 'tictactoe')).toThrow('games table');
     w.couple.coins = 1000;
-    R.buy(ana(), 'table_games');
+    R.buy(ana(weekWith(['table_games'])), 'table_games');
     R.place(ana(), w.inventory[0].id, { surface: 'floor', x: 3, y: 3, rot: 0 });
     const g = R.gameStart(ana(), 'tictactoe');
     expect(() => R.gameMove(ben(), g.id, 0)).toThrow('turn');
@@ -124,7 +126,7 @@ describe('games', () => {
   it('keeps the Draw & Guess word from the guesser', () => {
     const { w, ana, ben } = setup();
     w.couple.coins = 1000;
-    R.buy(ana(), 'easel');
+    R.buy(ana(weekWith(['easel'])), 'easel');
     R.place(ana(), w.inventory[0].id, { surface: 'floor', x: 5, y: 5, rot: 0 });
     const g = R.gameStart(ana(), 'draw');
     expect(() => R.drawWord(ben(), g.id)).toThrow();

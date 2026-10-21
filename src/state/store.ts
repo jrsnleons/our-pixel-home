@@ -10,7 +10,7 @@ import { ActionError, type Backend, type RpcName, type Rpcs } from '../net/backe
 import type { FeedEvent, Patch, Snapshot } from '../net/types';
 
 export type Phase = 'boot' | 'signin' | 'profile' | 'pair' | 'home' | 'archived';
-export type Sheet = 'store' | 'work' | 'decorate' | 'notes' | 'me' | 'quests' | 'feed' | 'wardrobe' | null;
+export type Sheet = 'shop' | 'work' | 'decorate' | 'notes' | 'me' | 'quests' | 'feed' | 'wardrobe' | null;
 
 export interface Prefs {
   theme: ThemeKey;
@@ -32,8 +32,6 @@ function loadPrefs(): Prefs {
 }
 
 export const prefs = signal<Prefs>(loadPrefs());
-/** The Store tab to open on next (a jump from the wardrobe or a tip). */
-export const storeTab = signal<string | null>(null);
 export function setPrefs(p: Partial<Prefs>) {
   prefs.value = { ...prefs.value, ...p };
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value)); } catch { /* ignore */ }
