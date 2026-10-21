@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mix, ramp, shade } from '../core/color';
 import { ROOM } from '../core/grid';
-import { ORIGIN, STUDIO, type HomeLayout } from '../core/layout';
+import { ORIGIN, STUDIO, type FloorPlan } from '../core/layout';
 import type { Theme } from '../data/themes';
 import { cbox, dispose, flat, pbox } from './art/kit';
 import { solid, wood } from './art/paint';
@@ -20,6 +20,8 @@ const WALL_T = 0.25;
 
 export class RoomShell {
   readonly group = new THREE.Group();
+  /** The front door and its mat: tap either to step outside. */
+  readonly doorPicks: THREE.Object3D[] = [];
   private skyCtx: Ctx;
   private skyTex: THREE.CanvasTexture;
   private shaft: THREE.Mesh;
@@ -33,9 +35,9 @@ export class RoomShell {
   private T: Theme;
   private day: Daylight | null = null;
   private rain: { x: number; y: number; s: number }[] = [];
-  private L: HomeLayout;
+  private L: FloorPlan;
 
-  constructor(T: Theme, style: RoomStyle, L: HomeLayout = STUDIO) {
+  constructor(T: Theme, style: RoomStyle, L: FloorPlan = STUDIO) {
     this.T = T;
     this.L = L;
     const g = this.group;
@@ -211,6 +213,7 @@ export class RoomShell {
     door.position.set(-HALF + 0.02, (h - 0.15) / 2, (z0 + z1) / 2);
     door.receiveShadow = true;
     g.add(door);
+    this.doorPicks.push(door);
     const trim = shade(T.wall.trim, -0.05);
     const t1 = pbox(-HALF, 0, z0, 0.1, h, 0.15, { sides: solid(trim), top: solid(shade(trim, 0.1)) }, { cast: false });
     const t2 = pbox(-HALF, 0, z1 - 0.15, 0.1, h, 0.15, { sides: solid(trim), top: solid(shade(trim, 0.1)) }, { cast: false });
@@ -228,6 +231,7 @@ export class RoomShell {
     mat.position.set(-HALF + 0.42, 0.012, (z0 + z1) / 2);
     mat.receiveShadow = true;
     g.add(mat);
+    this.doorPicks.push(mat);
   }
 
   /** Apply time of day: sky colors, sun, ambient, shaft. Cheap; call once a minute. */

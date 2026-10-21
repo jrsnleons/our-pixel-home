@@ -25,7 +25,7 @@ const STEPS: Step[] = [
   { target: 'store', title: 'Store', text: () => 'Start by buying your first real bed. Furniture, wallpaper and outfits are all here.' },
   { target: 'decorate', title: 'Decorate', text: () => 'Place, turn and move furniture around your room.' },
   { target: 'notes', title: 'Notes', text: () => 'Shared notebooks, prayer requests, and your own quiet time with the Lord.' },
-  { target: 'work', title: 'Work', text: () => 'Work café shifts for coins, on your own or together.' },
+  { target: 'door', title: 'The front door', text: () => 'Tap it to head out to Maple Street. That’s where the café, the shops and your jobs are.' },
 ];
 
 interface Box { x: number; y: number; w: number; h: number }
@@ -46,6 +46,9 @@ export function Tour({ scene, onDone }: { scene: HomeScene; onDone: () => void }
           const who = partner.value ? scene.partner : scene.me;
           const p = scene.project(who.head());
           b = { x: p.x - stage.left - 26, y: p.y - stage.top - 10, w: 52, h: 76 };
+        } else if (step.target === 'door') {
+          const p = scene.project(scene.me.pos.clone().set(-3.4, 1.3, 1.5));
+          b = { x: p.x - stage.left - 34, y: p.y - stage.top - 52, w: 68, h: 104 };
         } else {
           const r = document.querySelector(`[data-tour="${step.target}"]`)?.getBoundingClientRect();
           if (r) b = { x: r.left - stage.left - 4, y: r.top - stage.top - 4, w: r.width + 8, h: r.height + 8 };

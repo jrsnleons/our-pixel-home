@@ -4,7 +4,7 @@
 // wainscot.
 
 import { footprint, ITEM_BY_KEY, type ItemDef } from '../data/catalog';
-import { floorTiles, ORIGIN, STUDIO, type HomeLayout } from './layout';
+import { floorTiles, ORIGIN, STUDIO, type FloorPlan, type HomeLayout } from './layout';
 
 /** Wall dimensions shared by every home. w and d are the studio, which anchors the world frame. */
 export const ROOM = { w: ORIGIN.w, d: ORIGIN.d, wallRows: 3, wallHeight: 4, wainscot: 1 } as const;
@@ -40,7 +40,7 @@ export function blocksWalking(def: ItemDef): boolean {
   return def.kind === 'floor-item' && !def.flat && !def.hanging;
 }
 
-export function inFloor(t: Tile, L: HomeLayout = STUDIO): boolean {
+export function inFloor(t: Tile, L: FloorPlan = STUDIO): boolean {
   return floorTiles(L).has(key(t.x, t.y));
 }
 
@@ -137,7 +137,7 @@ export function findFreeSpot(def: ItemDef, placements: Placement[], avoid: Tile[
 }
 
 /** True if every walkable tile can reach every other one. Placement refuses to cut the room in two. */
-export function allFreeTilesConnected(blocked: Set<string>, L: HomeLayout = STUDIO): boolean {
+export function allFreeTilesConnected(blocked: Set<string>, L: FloorPlan = STUDIO): boolean {
   let start: Tile | null = null;
   let total = 0;
   for (let y = 0; y < L.d; y++) for (let x = 0; x < L.w; x++) {
@@ -156,7 +156,7 @@ export function allFreeTilesConnected(blocked: Set<string>, L: HomeLayout = STUD
   return seen.size === total;
 }
 
-export function neighbors(t: Tile, L: HomeLayout = STUDIO): Tile[] {
+export function neighbors(t: Tile, L: FloorPlan = STUDIO): Tile[] {
   return [
     { x: t.x + 1, y: t.y }, { x: t.x - 1, y: t.y }, { x: t.x, y: t.y + 1 }, { x: t.x, y: t.y - 1 },
   ].filter((n) => inFloor(n, L));

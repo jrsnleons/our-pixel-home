@@ -2,7 +2,7 @@
 // clarity beats a binary heap here.
 
 import { key, neighbors, type Tile } from './grid';
-import { STUDIO, type HomeLayout } from './layout';
+import { STUDIO, type FloorPlan } from './layout';
 
 const manhattan = (a: Tile, b: Tile) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
@@ -11,7 +11,7 @@ const manhattan = (a: Tile, b: Tile) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y
  * The start tile may be blocked (you can always step off furniture you were sitting on).
  * Paths prefer to keep going straight so walking looks deliberate, not zig-zaggy.
  */
-export function findPath(start: Tile, goal: Tile, blocked: Set<string>, L: HomeLayout = STUDIO): Tile[] | null {
+export function findPath(start: Tile, goal: Tile, blocked: Set<string>, L: FloorPlan = STUDIO): Tile[] | null {
   if (start.x === goal.x && start.y === goal.y) return [];
   if (blocked.has(key(goal.x, goal.y))) return null;
   const open: { t: Tile; f: number; g: number; dir: number }[] = [{ t: start, f: manhattan(start, goal), g: 0, dir: -1 }];
@@ -47,7 +47,7 @@ export function findPath(start: Tile, goal: Tile, blocked: Set<string>, L: HomeL
 }
 
 /** Nearest reachable walkable tile next to any of `targets` (for walking up to furniture or a person). */
-export function pathToAdjacent(start: Tile, targets: Tile[], blocked: Set<string>, prefer?: (t: Tile) => number, L: HomeLayout = STUDIO): Tile[] | null {
+export function pathToAdjacent(start: Tile, targets: Tile[], blocked: Set<string>, prefer?: (t: Tile) => number, L: FloorPlan = STUDIO): Tile[] | null {
   const targetKeys = new Set(targets.map((t) => key(t.x, t.y)));
   const candidates: Tile[] = [];
   for (const t of targets) for (const n of neighbors(t, L)) {
@@ -70,7 +70,7 @@ export function pathToAdjacent(start: Tile, targets: Tile[], blocked: Set<string
 }
 
 /** The closest walkable tile to `t` (breadth-first), used when someone ends up inside furniture. */
-export function nearestFree(t: Tile, blocked: Set<string>, L: HomeLayout = STUDIO): Tile | null {
+export function nearestFree(t: Tile, blocked: Set<string>, L: FloorPlan = STUDIO): Tile | null {
   const seen = new Set([key(t.x, t.y)]);
   const q = [t];
   while (q.length) {

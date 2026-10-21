@@ -161,6 +161,8 @@ export type Patch = Partial<Omit<Snapshot, 'me'>> & { me?: Profile; toast?: stri
 /** Live, unsaved messages between the two phones. */
 export type LiveMsg =
   | { t: 'walk'; from: Tile; path: Tile[] }
+  /** I went somewhere else (home, town, or inside a building) and appeared at `at`. */
+  | { t: 'area'; area: string; at: Tile }
   | { t: 'settle'; state: SettleState | null }
   | { t: 'interact'; play: InteractionPlay }
   | { t: 'heart' }

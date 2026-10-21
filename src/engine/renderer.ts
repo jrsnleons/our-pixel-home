@@ -66,7 +66,12 @@ function storageSet(k: string, v: string) { try { localStorage.setItem(k, v); } 
 
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
+  /** The home's scene. Other areas (town, shops) bring their own and take over with attach(). */
   readonly scene = new THREE.Scene();
+  private active: THREE.Scene = this.scene;
+  private renderPass!: RenderPass;
+  /** How many world units the view fits across the width (the room's diagonal, or a stretch of street). */
+  fitW = 10.6;
   readonly camera = new THREE.PerspectiveCamera(24, 0.5, 1, 120);
   private composer: EffectComposer;
   private bloom: UnrealBloomPass;
@@ -111,7 +116,8 @@ export class Renderer {
     this.level = Number.isFinite(saved) && saved > 0 ? Math.min(saved, LADDER.length - 1) : weak ? 2 : 0;
 
     this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(this.renderPass);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.45, 0.5, 0.82);
     this.composer.addPass(this.bloom);
     this.tiltH = new ShaderPass(TiltShader);
@@ -131,7 +137,24 @@ export class Renderer {
     });
   }
 
-  setMood(bloom: number, tint: string, tintAmt: number, backdrop: string) {
+  /** Draw a different scene (the town, a shop) with the same camera and post stack. */
+  attach(scene: THREE.Scene, opts: { pitch?: number; fitW?: number } = {}) {
+    this.active = scene;
+    this.renderPass.scene = scene;
+    this.setView(opts.pitch ?? 0.66, opts.fitW ?? 10.6);
+  }
+
+  /** Camera height (how steeply it looks down) and how much of the world fits across the screen. */
+  setView(pitch: number, fitW: number) {
+    this.camDir.set(0.62, pitch, 0.78).normalize();
+    view.yaw = Math.atan2(this.camDir.x, this.camDir.z);
+    this.fitW = fitW;
+    this.resize(this.w, this.h);
+  }
+
+  get activeScene() { return this.active; }
+
+  setMood(bloom: number, tint: string, tintAmt: number, backdrop: string, into: THREE.Scene = this.scene) {
     this.bloom.strength = bloom;
     (this.grade.uniforms.tint.value as THREE.Color).set(tint);
     this.grade.uniforms.tintAmt.value = tintAmt;
@@ -157,8 +180,8 @@ export class Renderer {
     const tex = new THREE.CanvasTexture(c);
     tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
     tex.colorSpace = THREE.SRGBColorSpace;
-    (this.scene.background as THREE.Texture | null)?.dispose?.();
-    this.scene.background = tex;
+    (into.background as THREE.Texture | null)?.dispose?.();
+    into.background = tex;
   }
 
   get quality(): QualityLevel { return LADDER[this.level]; }
@@ -175,7 +198,7 @@ export class Renderer {
     this.bloom.resolution.set(this.w / 2, this.h / 2);
     this.camera.aspect = this.w / this.h;
     // Fit the room's diagonal across the width, with breathing room for HUD bars.
-    const fitW = 10.6;
+    const fitW = this.fitW;
     const visH = Math.max(fitW / this.camera.aspect, 11.2);
     this.baseDist = visH / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     this.camera.far = this.baseDist + 60;
@@ -238,7 +261,7 @@ export class Renderer {
       this.tiltH.enabled = this.tiltV.enabled = q.tilt;
       this.composer.render(dt);
     } else {
-      this.renderer.render(this.scene, this.camera);
+      this.renderer.render(this.active, this.camera);
     }
     this.measure(raw);
   }

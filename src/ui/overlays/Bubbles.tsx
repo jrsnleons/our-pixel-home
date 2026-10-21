@@ -104,6 +104,16 @@ export function PartnerBubble(props: { at: ScreenPoint; online: boolean; lastSee
   );
 }
 
+/** A townsperson or shopkeeper says something. */
+export function SayBubble({ at, name, line, onClose }: { at: ScreenPoint; name: string; line: string; onClose: () => void }) {
+  return (
+    <div class="bubble" style={{ ...place(at), flexDirection: 'column', maxWidth: '72%', width: 'max-content' }} onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <span class="title">{name}</span>
+      <span class="small">{line}</span>
+    </div>
+  );
+}
+
 export function MeBubble({ at, scene, onClose }: { at: ScreenPoint; scene: HomeScene; onClose: () => void }) {
   const emote = (frames: string[], fps: number, secs: number, fx?: 'heart' | 'pray' | 'note' | 'sparkle') => () => {
     onClose();

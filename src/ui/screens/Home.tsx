@@ -6,17 +6,22 @@ import { sfx, startMusic, stopMusic, musicPlaying, setMusicVolume } from '../../
 import { ITEM_BY_KEY, ITEMS } from '../../data/catalog';
 import { prewarmThumbs } from '../thumbs';
 import { INTERACTION_BY_ID } from '../../data/interactions';
-import { isJob, JOBS, type JobKey } from '../../data/jobs';
+import { isJob, JOBS, jobLock, type JobKey } from '../../data/jobs';
+import { INTERIOR_DOOR, INTERIORS, PLACE_BY_ID, TOWN_SPAWN, type Place } from '../../data/town';
 import { THEMES } from '../../data/themes';
-import type { Placement } from '../../core/grid';
+import type { Placement, Tile } from '../../core/grid';
 import { layoutOf } from '../../core/layout';
+import type { AreaEvents, AreaScene, Hotspot } from '../../engine/area';
+import { InteriorScene } from '../../engine/interior';
 import { HomeScene, type ScreenPoint, type SettleState } from '../../engine/scene';
+import { TownScene } from '../../engine/town';
 import type { LocalBackend } from '../../net/local';
 import type { GameKind, LiveMsg } from '../../net/types';
 import { loadLast, saveLast } from '../../state/resume';
+import { area, areaName, inside, insideOf, partnerArea, type AreaId } from '../../state/area';
 import { act, backend, coins, couple, day, markFeedSeen, partner, partnerLastSeen, partnerOnline, prefs, sheet, snap, toast, tourReplay, unseen, type Sheet } from '../../state/store';
 import { Coin, Icon } from '../kit';
-import { FurnitureBubble, MeBubble, PartnerBubble } from '../overlays/Bubbles';
+import { FurnitureBubble, MeBubble, PartnerBubble, SayBubble } from '../overlays/Bubbles';
 import { Tour } from '../overlays/Tour';
 import { InstallNudge } from '../overlays/Install';
 import { InteractionWheel } from '../overlays/Wheel';
@@ -51,6 +56,9 @@ export function Home() {
   const [feedOpen, setFeedOpen] = useState(false);
   const [sinceLater, setSinceLater] = useState(false);
   const [celebrate, setCelebrate] = useState<{ label: string; day: string } | null>(null);
+  const [talk, setTalk] = useState<{ name: string; line: string; at: ScreenPoint } | null>(null);
+  const [lobby, setLobby] = useState<{ place: Place; job?: JobKey } | null>(null);
+  const [fade, setFade] = useState(false);
   const [tourDoneHere, setTourDoneHere] = useState(() => { try { return localStorage.getItem('oph.tour') === '1'; } catch { return false; } });
 
   // Where each of us is sitting or lying, if anywhere, for saving and for a partner who joins.
@@ -70,12 +78,14 @@ export function Home() {
       tapPartner: (at) => { if (!snap.value?.partner) return; sfx('tap'); setBubble({ kind: 'partner', at }); },
       tapMe: (at) => { sfx('tap'); setBubble({ kind: 'me', at }); },
       tapEmpty: () => { setBubble(null); },
+      tapDoor: () => goRef.current?.('town', 'home'),
       walked: (from, path) => { mySettled.current = null; backend.send({ t: 'walk', from, path }); },
       settled: (state) => { mySettled.current = state; backend.send({ t: 'settle', state }); },
       decorTap: (p) => decorTapRef.current?.(p),
       placingChanged: (s) => placingRef.current?.(s),
     }, layoutOf(s0.couple!.home));
     sceneRef = sc;
+    if (import.meta.env.DEV) (window as unknown as { __oph: unknown }).__oph = { sc, areas: () => areas.current, go: (to: AreaId, from?: string) => goRef.current?.(to, from) };
     sc.sync(s0.placements);
     sc.partner.group.visible = !!s0.partner;
     // Back where we were when the app was last open (or the middle of the room the first time).
@@ -101,6 +111,123 @@ export function Home() {
     }
     return () => { ro.disconnect(); sc.destroy(); canvas.remove(); sceneRef = null; };
   }, []);
+
+  // ---------- walking between home, the street and the buildings ----------
+  const areas = useRef<{ town: TownScene | null; ins: Map<string, InteriorScene>; active: AreaScene | null; busy: boolean }>({ town: null, ins: new Map(), active: null, busy: false });
+  const goRef = useRef<((to: AreaId, from?: string) => void) | null>(null);
+  const uiRef = useRef<{ hotspot: (h: Hotspot) => void; npc: (id: string, at: ScreenPoint) => void; partner: (at: ScreenPoint) => void }>({ hotspot: () => {}, npc: () => {}, partner: () => {} });
+  const areaEvents: AreaEvents = {
+    hotspot: (h) => uiRef.current.hotspot(h),
+    tapNpc: (id, at) => uiRef.current.npc(id, at),
+    tapPartner: (at) => uiRef.current.partner(at),
+    walked: (from, path) => backend.send({ t: 'walk', from, path }),
+    tapEmpty: () => { setTalk(null); setBubble(null); },
+  };
+  const looksNow = () => { const st = snap.value!; return { me: st.me.look, partner: st.partner?.look ?? st.me.look }; };
+  const lockedPlaces = () => new Set(Object.values(PLACE_BY_ID).filter((p) => p.jobs && p.jobs.every((j) => jobLock(snap.value?.me, j))).map((p) => p.id));
+  const getTown = () => {
+    const a = areas.current;
+    if (!a.town) { a.town = new TownScene(sceneRef!.r, prefs.value.theme, looksNow(), areaEvents); a.town.setLocked(lockedPlaces()); }
+    return a.town;
+  };
+  const getInside = (id: string) => {
+    const a = areas.current;
+    let i = a.ins.get(id);
+    if (!i) { i = new InteriorScene(sceneRef!.r, prefs.value.theme, INTERIORS[id], looksNow(), areaEvents); a.ins.set(id, i); }
+    return i;
+  };
+  const here = (): AreaScene | null => areas.current.active;
+
+  /** Show my partner in whatever place I'm in, if they are in it too (and online). */
+  const showPartner = (at?: Tile) => {
+    const s = snap.value;
+    const together = !!s?.partner && partnerOnline.value && partnerArea.value === area.value;
+    if (area.value === 'home') {
+      if (sceneRef) sceneRef.partner.group.visible = !!s?.partner && (partnerArea.value === 'home' || !partnerOnline.value);
+    } else here()?.setPartnerHere(together, at ?? undefined);
+  };
+
+  goRef.current = (to, from) => {
+    const sc = sceneRef;
+    const a = areas.current;
+    if (!sc || a.busy || to === area.value) return;
+    a.busy = true;
+    setBubble(null); setTalk(null); setWheel(false);
+    setFade(true);
+    setTimeout(() => {
+      if (area.value === 'home') sc.pause(); else a.active?.pause();
+      let at: Tile;
+      if (to === 'home') {
+        a.active = null;
+        sc.resume();
+        at = sc.layout.door;
+        sc.me.stand();
+        sc.me.place(at);
+      } else if (to === 'town') {
+        const t = getTown();
+        at = from && PLACE_BY_ID[from] ? PLACE_BY_ID[from].door : TOWN_SPAWN;
+        t.setLocked(lockedPlaces());
+        t.placeMe(at);
+        a.active = t;
+        t.start();
+      } else {
+        const i = getInside(insideOf(to)!);
+        at = INTERIOR_DOOR;
+        i.placeMe(at);
+        a.active = i;
+        i.start();
+      }
+      area.value = to;
+      backend.send({ t: 'area', area: to, at });
+      showPartner(at);
+      setFade(false);
+      a.busy = false;
+    }, 240);
+  };
+
+  uiRef.current = {
+    hotspot: (h) => {
+      sfx('tap');
+      const id = insideOf(area.value);
+      if (h.kind === 'exit') { goRef.current?.('town', id ?? undefined); return; }
+      if (h.kind === 'work') { const sp = id ? INTERIORS[id]?.spots.find((q) => q.id === h.id) : null; if (id && sp) { setLobby({ place: PLACE_BY_ID[id], job: sp.job }); sheet.value = 'work'; } return; }
+      const p = PLACE_BY_ID[h.id];
+      if (!p) return;
+      if (p.kind === 'home') { goRef.current?.('home'); return; }
+      if (p.kind === 'job' && INTERIORS[p.id]) {
+        const open = p.jobs!.some((j) => !jobLock(snap.value?.me, j));
+        if (!open) {
+          const lock = jobLock(snap.value?.me, p.jobs![0])!;
+          toast(`${p.name} is hiring after ${lock.left} more ${JOBS[lock.after].name.toLowerCase()} ${lock.left === 1 ? 'shift' : 'shifts'}.`, 'info');
+          return;
+        }
+        goRef.current?.(inside(p.id), 'town');
+        return;
+      }
+      toast(`${p.name}: ${p.kind === 'soon' ? 'opening soon' : 'not open yet'}.`, 'info');
+    },
+    npc: (id, at) => {
+      sfx('tap');
+      const info = (here() as TownScene | InteriorScene | null)?.npcInfo(id);
+      if (info) setTalk({ ...info, at });
+    },
+    partner: (at) => { if (!snap.value?.partner) return; sfx('heart'); here()?.fx.spawn('heart', here()!.partner.head(), { count: 3, spread: 0.4 }); backend.send({ t: 'heart' }); void act('heart', {}, { quiet: true }); void at; },
+  };
+
+  // Rooms and streets are built for one theme and one set of looks; rebuild them when those change.
+  useSignalEffect(() => {
+    const th = prefs.value.theme;
+    const looks = snap.value ? looksNow() : null;
+    const a = areas.current;
+    if (a.town) a.town.setLocked(lockedPlaces());
+    if (!looks) return;
+    for (const sc of [a.town, ...a.ins.values()]) sc?.setLooks(looks.me, looks.partner);
+    if (area.value === 'home' && (a.town?.themeKey !== th || [...a.ins.values()].some((i) => i.themeKey !== th))) {
+      a.town?.destroy(); a.town = null;
+      for (const i of a.ins.values()) i.destroy();
+      a.ins.clear();
+    }
+  });
 
   // Save where we are whenever the app is hidden or closed, and every few seconds besides.
   useEffect(() => {
@@ -129,7 +256,7 @@ export function Home() {
     if (!scene || !s?.couple) return;
     scene.setLayout(layoutOf(s.couple.home));
     scene.sync(s.placements);
-    scene.partner.group.visible = !!s.partner;
+    if (area.value === 'home') scene.partner.group.visible = !!s.partner && (partnerArea.value === 'home' || !partnerOnline.value);
     const T = THEMES[prefs.value.theme];
     const st = s.couple.style;
     scene.setStyle({ wallpaper: st.wallpaper, wallTint: st.wallTint || T.wall.tint, floor: st.floor, floorTint: st.floorTint, curtains: s.unlocks.includes('up_curtains') });
@@ -183,6 +310,9 @@ export function Home() {
     if (!on) partnerSettled.current = null;
     // Tell a partner who just came in where I am, so their phone doesn't show me by the door.
     if (on) backend.send({ t: 'settle', state: scene.mySettleState(mySettled.current) });
+    if (on && area.value !== 'home') backend.send({ t: 'area', area: area.value, at: here()?.me.tile ?? INTERIOR_DOOR });
+    if (!on) partnerArea.value = 'home';
+    showPartner();
     if (on && (backend as LocalBackend).syncPartnerTile) (backend as LocalBackend).syncPartnerTile(scene.partner.tile);
   });
 
@@ -192,8 +322,12 @@ export function Home() {
     liveHandler = (m: LiveMsg) => {
       const pName = partner.value?.name ?? 'Your partner';
       switch (m.t) {
-        case 'walk': partnerSettled.current = null; scene.remoteWalk(m.from, m.path); break;
-        case 'settle': partnerSettled.current = m.state && m.state.pose !== 'stand' ? m.state : null; scene.remoteSettle(m.state); break;
+        case 'walk':
+          if (partnerArea.value !== area.value) break;
+          if (area.value === 'home') { partnerSettled.current = null; scene.remoteWalk(m.from, m.path); } else here()?.remoteWalk(m.from, m.path);
+          break;
+        case 'area': partnerArea.value = m.area; showPartner(m.at); break;
+        case 'settle': if (area.value !== 'home') break; partnerSettled.current = m.state && m.state.pose !== 'stand' ? m.state : null; scene.remoteSettle(m.state); break;
         case 'interact': {
           scene.playInteraction(m.play, false);
           const d = INTERACTION_BY_ID[m.play.id];
@@ -328,6 +462,7 @@ export function Home() {
           onClose={() => setBubble(null)}
         />
       )}
+      {talk && <SayBubble at={talk.at} name={talk.name} line={talk.line} onClose={() => setTalk(null)} />}
       {bubble?.kind === 'me' && scene && <MeBubble at={bubble.at} scene={scene} onClose={() => setBubble(null)} />}
 
       {wheel && scene && (
@@ -348,7 +483,7 @@ export function Home() {
             <button class="btn ghost grow" onClick={() => setInvite(null)}>Later</button>
             <button class="btn grow" onClick={() => {
               const inv = invite; setInvite(null);
-              if (inv.kind === 'shift') { workJoin = inv.ref ? { id: inv.ref, job: inv.job ?? 'cafe' } : null; sheet.value = 'work'; }
+              if (inv.kind === 'shift') { workJoin = inv.ref ? { id: inv.ref, job: inv.job ?? 'cafe' } : null; setLobby(null); sheet.value = 'work'; }
               else setGame({ id: inv.ref ?? null, kind: inv.kind });
             }}>Join</button>
           </div>
@@ -356,7 +491,7 @@ export function Home() {
       )}
 
       {sheet.value === 'store' && <Store onClose={() => open(null)} />}
-      {sheet.value === 'work' && <Work onClose={() => open(null)} joinShift={takeWorkJoin()} />}
+      {sheet.value === 'work' && <Work onClose={() => { open(null); setLobby(null); }} joinShift={takeWorkJoin()} title={lobby ? lobby.place.name : 'Work'} jobs={lobby ? lobby.place.jobs ?? null : null} first={lobby?.job} />}
       {sheet.value === 'decorate' && scene && <Decorate scene={scene} onClose={() => open(null)} bind={(d, p) => { decorTapRef.current = d; placingRef.current = p; }} />}
       {sheet.value === 'notes' && <Notes onClose={() => open(null)} tab={notesTab} setTab={setNotesTab} />}
       {sheet.value === 'me' && <Me onClose={() => open(null)} />}
@@ -371,9 +506,11 @@ export function Home() {
       {showTour && scene && <Tour scene={scene} onDone={finishTour} />}
       {!showTour && !sheet.value && !game && !askSince && !feedOpen && (s.me.tourDone || tourDoneHere) && <InstallNudge />}
 
-      {sheet.value !== 'decorate' && (
+      {(area.value !== 'home' || (partnerOnline.value && partnerArea.value !== 'home')) && <AreaTag go={(to) => goRef.current?.(to, 'town')} />}
+      <div class={`areafade ${fade ? 'on' : ''}`} />
+      {sheet.value !== 'decorate' && area.value === 'home' && (
         <nav class="bottombar">
-          {([['store', 'store', 'Store'], ['work', 'work', 'Work'], ['decorate', 'decorate', 'Decorate'], ['notes', 'notes', 'Notes'], ['me', 'me', 'Me']] as const).map(([k, icon, label]) => (
+          {([['store', 'store', 'Store'], ['decorate', 'decorate', 'Decorate'], ['notes', 'notes', 'Notes'], ['me', 'me', 'Me']] as const).map(([k, icon, label]) => (
             <button class="navbtn" aria-pressed={sheet.value === k} onClick={() => open(k)} data-tour={k}>
               <Icon name={icon} />
               <span>{label}</span>
@@ -386,6 +523,20 @@ export function Home() {
           <div class="toast" style={{ pointerEvents: 'auto' }}>Code for your partner: <b style={{ userSelect: 'text' }}>{couple.value.inviteCode}</b></div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Which place you're in, and where your partner is when it isn't here. */
+function AreaTag({ go }: { go?: (to: AreaId) => void }) {
+  const mine = area.value, theirs = partnerArea.value;
+  const away = !!partner.value && partnerOnline.value && theirs !== mine;
+  return (
+    <div class="areatag">
+      <div class="pill row" style={{ gap: '8px' }}>
+        <b>{areaName(mine)}</b>
+        {away && go && <><span class="sub" style={{ display: 'inline' }}>{partner.value!.name} is at {areaName(theirs)}</span><button class="btn small" onClick={() => go(theirs)}>Join</button></>}
+      </div>
     </div>
   );
 }

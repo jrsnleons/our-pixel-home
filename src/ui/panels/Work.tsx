@@ -1,4 +1,5 @@
-// Work: the job board. Each job is a 90-second mini-game you play alone or together, with its
+// Work: the job lobby at a workplace on Maple Street (or the shift itself, when you join your
+// partner's or pick up an interrupted one). Each job is a 90-second mini-game you play alone or together, with its
 // own level; every level makes the job harder and pays more. The flower shop and Bug Squad open
 // after a few café shifts, delivery after the flower shop and Inbox Zero after Bug Squad,
 // counted per person (a together shift counts for both of you). A solo shift interrupted by
@@ -7,7 +8,7 @@
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { sfx } from '../../audio/audio';
 import { SHIFT, jobLevel, shiftEstimate, xpForLevel } from '../../data/economy';
-import { JOB_KEYS, JOBS, jobLock, jobXp, shiftsWorked, type JobKey } from '../../data/jobs';
+import { JOBS, jobLock, jobXp, shiftsWorked, type JobKey } from '../../data/jobs';
 import { act, backend, couple, partner, partnerOnline, snap, toast } from '../../state/store';
 import { CafeShift, cafeBackdrop } from '../jobs/Cafe';
 import { BugShift, bugsThumb } from '../jobs/Bugs';
@@ -41,7 +42,8 @@ const clearSaved = () => { try { localStorage.removeItem(LIVE_KEY); } catch { /*
 
 interface Result { job: JobKey; pay: number; level: number; levelUp: boolean; opened: JobKey | null; openedAll?: JobKey[]; served: number; missed: number }
 
-export function Work({ onClose, joinShift }: { onClose: () => void; joinShift: { id: string; job: JobKey } | null }) {
+/** `jobs` are the desks of the workplace you walked into; null when you joined a shift from elsewhere. */
+export function Work({ onClose, joinShift, title, jobs, first }: { onClose: () => void; joinShift: { id: string; job: JobKey } | null; title: string; jobs: JobKey[] | null; first?: JobKey }) {
   const [shift, setShift] = useState<{ id: string; job: JobKey; role: Role; resume?: ShiftProgress } | null>(() => {
     if (joinShift) return { ...joinShift, role: 'guest' };
     const saved = savedShift();
@@ -49,7 +51,8 @@ export function Work({ onClose, joinShift }: { onClose: () => void; joinShift: {
   });
   const lastSave = useRef(0);
   const [result, setResult] = useState<Result | null>(null);
-  const [pick, setPick] = useState<JobKey>(() => lastJob());
+  const [pick, setPick] = useState<JobKey>(() => first ?? lastJob());
+  const ran = useRef<JobKey>(shift?.job ?? 'cafe');
 
   const start = async (job: JobKey, together: boolean) => {
     if (together && !partnerOnline.value) { toast(`${partner.value?.name ?? 'Your partner'} isn’t here right now.`, 'error'); return; }
@@ -58,6 +61,7 @@ export function Work({ onClose, joinShift }: { onClose: () => void; joinShift: {
     sfx('bell');
     if (together) backend.send({ t: 'invite', what: 'shift', ref: s.id, job });
     try { localStorage.setItem('oph.job', job); } catch { /* private mode */ }
+    ran.current = job;
     setResult(null);
     clearSaved();
     setShift({ id: s.id, job, role: together ? 'host' : 'solo' });
@@ -84,10 +88,10 @@ export function Work({ onClose, joinShift }: { onClose: () => void; joinShift: {
   const today = snap.value?.today ?? {};
   const worked = today.shifts ?? 0;
   return (
-    <Sheet title="Work" onClose={onClose}>
+    <Sheet title={title} onClose={onClose}>
       <div class="col">
         {result && <ResultCard r={result} />}
-        {JOB_KEYS.map((k) => <JobCard job={k} open={pick === k} onOpen={() => { sfx('tap'); setPick(k); }} onStart={(t) => start(k, t)} earned={today[k] ?? 0} />)}
+        {(jobs ?? [ran.current]).map((k) => <JobCard job={k} open={pick === k} onOpen={() => { sfx('tap'); setPick(k); }} onStart={(t) => start(k, t)} earned={today[k] ?? 0} />)}
         <span class="tiny muted center">
           {worked < SHIFT.softCap ? `Pay is lower after ${SHIFT.softCap} shifts a day, all jobs together. ${worked ? `${worked} today.` : ''}` : `You’ve worked ${worked} shifts today, so pay is lower until tomorrow.`}
         </span>

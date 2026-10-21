@@ -104,7 +104,7 @@ textarea.input { resize: none; line-height: 1.4; font-family: var(--read-font), 
 .dot { width: 8px; height: 8px; display: inline-block; background: var(--muted); box-shadow: 0 0 0 2px var(--outline); }
 .dot.on { background: #5cd65c; }
 
-.bottombar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; padding: 0 10px calc(var(--safe-b) + 10px); display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.bottombar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; padding: 0 10px calc(var(--safe-b) + 10px); display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 .navbtn { appearance: none; border: 0; cursor: pointer; background: var(--panel); color: var(--ink); padding: 6px 2px 5px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: .78em; position: relative;
   box-shadow: 0 calc(-1 * var(--u)) 0 0 var(--outline), 0 var(--u) 0 0 var(--outline), calc(-1 * var(--u)) 0 0 0 var(--outline), var(--u) 0 0 0 var(--outline), inset 0 var(--u) 0 0 rgba(255,255,255,.5), inset 0 calc(-2 * var(--u)) 0 0 rgba(0,0,0,.12); }
 .navbtn[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
@@ -343,3 +343,9 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 18px; border: 0; bo
 @keyframes thumb-in { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
 .slot.pending { position: relative; }
 .slot.pending::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); background-size: 300% 100%; animation: shimmer .9s steps(10) infinite; pointer-events: none; }
+
+/* Walking between home, the street and the buildings: the screen dips to black and back. */
+.areafade { position: absolute; inset: 0; z-index: 30; background: #120e12; opacity: 0; pointer-events: none; transition: opacity .22s linear; }
+.areafade.on { opacity: 1; pointer-events: auto; }
+.areatag { position: absolute; left: 0; right: 0; top: calc(var(--safe-t) + 62px); z-index: 7; display: flex; justify-content: center; pointer-events: none; }
+.areatag .pill { pointer-events: auto; }

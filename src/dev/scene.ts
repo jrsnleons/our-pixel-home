@@ -27,7 +27,7 @@ const noop = () => {};
 const T = THEMES[theme];
 const scene = new HomeScene(canvas, theme, { wallpaper: q.get('wp') ?? (room === 'starter' ? 'wp_plain' : 'wp_flowers'), wallTint: T.wall.tint, floor: q.get('fl') ?? (room === 'starter' ? 'fl_plywood' : 'fl_pine'), floorTint: null, curtains: room !== 'starter' },
   { me: { ...DEFAULT_LOOK, hair: 'short', hairColor: 1, wear: { top: 'hoodie:0', bottom: 'joggers:0', shoes: 'sneakers:0' } }, partner: { ...DEFAULT_LOOK, hair: 'long', hairColor: 3, skin: 2, wear: { top: 'knit:0', bottom: 'jeans:0', shoes: 'boots:0', hat: 'flower:0' } } },
-  { tapFurniture: noop, tapPartner: noop, tapMe: noop, tapEmpty: noop, walked: noop, settled: noop, decorTap: noop, placingChanged: noop });
+  { tapFurniture: noop, tapPartner: noop, tapMe: noop, tapEmpty: noop, tapDoor: noop, walked: noop, settled: noop, decorTap: noop, placingChanged: noop });
 if (q.has('zoom')) { scene.setZoom(Number(q.get('zoom'))); scene.r.pan.set(Number(q.get('px') ?? 0), Number(q.get('py') ?? 0)); }
 if (q.has('hour')) scene.setHour(Number(q.get('hour')));
 scene.sync(ROOMS[room] ?? ROOMS.full);

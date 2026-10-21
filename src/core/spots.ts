@@ -3,7 +3,7 @@
 
 import { footprint, ITEM_BY_KEY, type Action, type ItemDef } from '../data/catalog';
 import { blockedTiles, cellsOf, inFloor, key, neighbors, type Placement, type Tile } from './grid';
-import { ORIGIN, STUDIO, type HomeLayout } from './layout';
+import { ORIGIN, STUDIO, type FloorPlan } from './layout';
 
 export type Facing = '+x' | '-x' | '+z' | '-z';
 export type Pose = 'sit' | 'lie' | 'stand';
@@ -53,7 +53,7 @@ function step(t: Tile, f: Facing): Tile {
 }
 
 /** A free floor tile next to `t`, preferring the given direction. */
-function approachFor(t: Tile, prefer: Facing, blocked: Set<string>, L: HomeLayout): Tile | null {
+function approachFor(t: Tile, prefer: Facing, blocked: Set<string>, L: FloorPlan): Tile | null {
   const first = step(t, prefer);
   if (inFloor(first, L) && !blocked.has(key(first.x, first.y))) return first;
   for (const n of neighbors(t, L)) if (!blocked.has(key(n.x, n.y))) return n;
@@ -61,7 +61,7 @@ function approachFor(t: Tile, prefer: Facing, blocked: Set<string>, L: HomeLayou
 }
 
 /** Spots for using an item. Returns as many as the item offers (two people can share a sofa). */
-export function spotsFor(p: Placement, action: Action, placements: Placement[], L: HomeLayout = STUDIO): Spot[] {
+export function spotsFor(p: Placement, action: Action, placements: Placement[], L: FloorPlan = STUDIO): Spot[] {
   const def = ITEM_BY_KEY[p.item];
   if (!def || p.surface !== 'floor') return [];
   const blocked = blockedTiles(placements);

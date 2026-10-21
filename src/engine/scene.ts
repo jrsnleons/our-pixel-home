@@ -27,6 +27,8 @@ export interface SceneEvents {
   tapPartner(at: ScreenPoint): void;
   tapMe(at: ScreenPoint): void;
   tapEmpty(): void;
+  /** You walked up to the front door (and tapped it): step out into town. */
+  tapDoor(): void;
   /** My avatar started walking; broadcast so the partner sees it. */
   walked(from: Tile, path: Tile[]): void;
   settled(state: SettleState | null): void;
@@ -88,6 +90,8 @@ export class HomeScene {
   private pinchStart = 0;
   private zoomStart = 1;
   private dragging = false;
+  /** False while another scene (the town, a shop) is on screen. */
+  private live = true;
 
   constructor(canvas: HTMLCanvasElement, themeKey: ThemeKey, style: RoomStyle, looks: { me: AvatarLook; partner: AvatarLook }, readonly events: SceneEvents, layout: HomeLayout = STUDIO) {
     this.r = new Renderer(canvas);
@@ -878,6 +882,7 @@ export class HomeScene {
 
   private bindInput(canvas: HTMLCanvasElement) {
     canvas.addEventListener('pointerdown', (e) => {
+      if (!this.live) return;
       canvas.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
       if (this.pointers.size === 2) {
@@ -888,6 +893,7 @@ export class HomeScene {
       this.dragging = false;
     });
     canvas.addEventListener('pointermove', (e) => {
+      if (!this.live) return;
       const p = this.pointers.get(e.pointerId);
       if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -905,6 +911,7 @@ export class HomeScene {
       else if (this.dragging && this.r.zoom > 1.02) this.panBy(dx, dy);
     });
     const end = (e: PointerEvent) => {
+      if (!this.live) return;
       const p = this.pointers.get(e.pointerId);
       this.pointers.delete(e.pointerId);
       if (!p) return;
@@ -962,6 +969,7 @@ export class HomeScene {
       }
     }
     if (this.decorating) { this.selected = null; this.paintGrid(); this.events.decorTap(null); return; }
+    if (!this.interacting && this.ray.intersectObjects(this.room.doorPicks, false).length) { this.goOut(); return; }
     const hit = new THREE.Vector3();
     if (this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) {
       const t = worldToTile(hit.x, hit.z);
@@ -977,7 +985,14 @@ export class HomeScene {
 
   // ---------- Loop ----------
 
+  private onFrame?: (dt: number, t: number) => void;
+
   start(onFrame?: (dt: number, t: number) => void) {
+    this.onFrame = onFrame;
+    this.startLoop();
+  }
+
+  private startLoop() {
     this.r.start((dt, t) => {
       this.clock += dt;
       for (let i = this.timers.length - 1; i >= 0; i--) if (this.timers[i].at <= this.clock) { const tm = this.timers[i]; this.timers.splice(i, 1); tm.fn(); }
@@ -1017,8 +1032,32 @@ export class HomeScene {
         this.zzzT += dt;
         if (this.zzzT > 1.6) { this.zzzT = 0; this.fx.spawn('zzz', this.partner.head(), { spread: 0.1 }); }
       }
-      onFrame?.(dt, t);
+      this.onFrame?.(dt, t);
     });
+  }
+
+  /** Walk to the front door, then leave. */
+  private goOut() {
+    const d = this.L.door;
+    if (this.me.tile.x === d.x && this.me.tile.y === d.y && !this.me.walking) { this.events.tapDoor(); return; }
+    this.walkMeTo(d, () => this.events.tapDoor());
+  }
+
+  /** Another scene takes over the screen: stop reacting to taps. */
+  pause() { this.live = false; this.pointers.clear(); }
+
+  /** Back home: draw this room again with its own camera, light and mood. */
+  resume() {
+    this.live = true;
+    this.r.attach(this.r.scene, { pitch: 0.66, fitW: 10.6 });
+    this.r.zoom = 1;
+    this.r.pan.set(0, 0);
+    this.r.setShadowLight(this.room.sun);
+    this.r.target.set(0, 1.05, 0.25);
+    const m = this.theme.mood;
+    this.r.setMood(m.bloom, m.grade, m.gradeAmount, m.backdrop);
+    this.applyDaylight(true);
+    this.startLoop();
   }
 
   resize(w: number, h: number) { this.r.resize(w, h); }

@@ -53,6 +53,9 @@ export const STUDIO: HomeLayout = {
   door: { x: 0, y: 5 },
 };
 
+/** What walking and pathfinding need to know about a place: the floor it covers. Towns and shops use this too. */
+export type FloorPlan = Pick<HomeLayout, 'w' | 'd' | 'rooms'>;
+
 export const LAYOUTS: Record<HomeId, HomeLayout> = { studio: STUDIO };
 
 export const HOME_ORDER: HomeId[] = ['studio'];
@@ -61,10 +64,10 @@ export function layoutOf(id: string | null | undefined): HomeLayout {
   return LAYOUTS[(id ?? 'studio') as HomeId] ?? STUDIO;
 }
 
-const floors = new WeakMap<HomeLayout, Set<string>>();
+const floors = new WeakMap<FloorPlan, Set<string>>();
 
 /** The floor tiles of a home as "x,y" keys. */
-export function floorTiles(L: HomeLayout): Set<string> {
+export function floorTiles(L: FloorPlan): Set<string> {
   let s = floors.get(L);
   if (!s) {
     s = new Set();
@@ -75,6 +78,6 @@ export function floorTiles(L: HomeLayout): Set<string> {
 }
 
 /** Which room a floor tile is in. */
-export function roomAt(L: HomeLayout, t: Tile): RoomDef | null {
+export function roomAt(L: FloorPlan, t: Tile): RoomDef | null {
   return L.rooms.find((r) => t.x >= r.x && t.y >= r.y && t.x < r.x + r.w && t.y < r.y + r.d) ?? null;
 }
