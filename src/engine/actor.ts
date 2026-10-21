@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { tileToWorld, type Tile } from '../core/grid';
-import { buildAvatarAtlas, FH, FRAME_INDEX, FW, type AvatarLook } from './art/avatar';
+import { buildAvatarAtlas, FH, FRAME_INDEX, FW, PPU, type AvatarLook } from './art/avatar';
 import { view } from './art/kit';
 import { canvas, px, texture } from './art/pixel';
 
@@ -67,10 +67,10 @@ export class Actor {
     this.pos.set(w.x, 0, w.z);
     const { texture: t, cols } = buildAvatarAtlas(look);
     this.atlas = t; this.cols = cols;
-    // HD frames are drawn at 32 px per unit: as wide as a tile's worth of the old art, taller.
-    // The bottom two rows are only outline, so the shoes sit on the floor.
-    const geo = new THREE.PlaneGeometry(FW / 32, FH / 32);
-    geo.translate(0, FH / 64 - 2 / 32, 0);
+    // Frames are drawn at the room's 16 px per unit, so avatar pixels and furniture pixels are
+    // the same size on screen. The bottom row is only outline, so the shoes sit on the floor.
+    const geo = new THREE.PlaneGeometry(FW / PPU, FH / PPU);
+    geo.translate(0, FH / (2 * PPU) - 1 / PPU, 0);
     // A little self-light keeps faces readable when the lamp is behind them at night.
     this.mat = new THREE.MeshLambertMaterial({ map: this.atlas, emissiveMap: this.atlas, emissive: '#FFFFFF', emissiveIntensity: 0.32, alphaTest: 0.5, side: THREE.DoubleSide });
     this.sprite = new THREE.Mesh(geo, this.mat);
