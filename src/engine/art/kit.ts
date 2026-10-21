@@ -123,16 +123,16 @@ export function spriteTexture(w: number, h: number, p: Painter): THREE.CanvasTex
   return texture(c);
 }
 
-/** Free GPU memory for everything under `obj` except shared materials. */
+/** Free GPU memory for everything under `obj` except shared materials, geometry and textures. */
 export function dispose(obj: THREE.Object3D) {
   obj.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.geometry && !mesh.geometry.userData.shared) mesh.geometry.dispose();
     const ms = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
     for (const m of ms) {
       if (m.userData.shared) continue;
       const anyM = m as THREE.MeshLambertMaterial;
-      anyM.map?.dispose();
+      if (anyM.map && !anyM.map.userData.shared) anyM.map.dispose();
       m.dispose();
     }
   });

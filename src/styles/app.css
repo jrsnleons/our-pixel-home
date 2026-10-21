@@ -15,6 +15,8 @@ body { font-family: var(--font), system-ui, sans-serif; color: var(--ink); -webk
 input, textarea, button, select { font: inherit; color: inherit; }
 textarea, input { user-select: text; -webkit-user-select: text; }
 img.px, canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; }
+/* A long press (the hidden test-mode hold, a held button) shouldn't pop up iOS's save-image menu. */
+img { -webkit-touch-callout: none; -webkit-user-drag: none; }
 
 /* ---------- frame: full screen on phones, a phone-shaped stage on desktop ---------- */
 #app { position: fixed; inset: 0; display: grid; place-items: center; background: var(--stage-bg, #17110f); }
@@ -362,3 +364,16 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 18px; border: 0; bo
 .district-banner span { margin-top: 4px; font-size: .72em; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.45); color: #fff; }
 @keyframes banner-in { 0% { opacity: 0; transform: translateY(-6px); } 12% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .district-banner { animation-duration: .01s; animation-delay: 2.6s; animation-fill-mode: both; animation-name: banner-out; } @keyframes banner-out { from { opacity: 1; } to { opacity: 0; } } }
+
+/* ---------- loading screen (see overlays/Loading.tsx) ---------- */
+/* Only transform and opacity animate, so the browser can keep it moving while the game builds. */
+.loading { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; background: color-mix(in srgb, #120e12 72%, transparent); animation: fade .12s steps(3) both; pointer-events: auto; }
+.load-card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 22px 14px; min-width: 190px; text-align: center; }
+.load-art { position: relative; width: 72px; height: 90px; }
+.load-house { position: absolute; left: 0; bottom: 0; width: 72px; height: 66px; }
+.load-heart { position: absolute; left: 25px; top: 4px; width: 21px; height: 18px; will-change: transform; animation: load-hop .7s steps(4) infinite; }
+@keyframes load-hop { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-5px); } }
+.load-bar { position: relative; width: 150px; height: 10px; overflow: hidden; background: var(--soft); box-shadow: 0 0 0 2px var(--outline); }
+.load-bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: repeating-linear-gradient(90deg, var(--accent) 0 8px, color-mix(in srgb, var(--accent) 70%, #fff) 8px 10px); will-change: transform; animation: load-run 1.2s steps(12) infinite; }
+@keyframes load-run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .load-heart, .load-bar i { animation-duration: 2.4s; } }

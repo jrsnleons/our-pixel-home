@@ -4,7 +4,7 @@ import { useSignalEffect } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { sfx, startMusic, stopMusic, musicPlaying, setMusicVolume } from '../../audio/audio';
 import { ITEM_BY_KEY, ITEMS } from '../../data/catalog';
-import { prewarmThumbs } from '../thumbs';
+import { cachedThumb, prewarmThumbs, requestThumb } from '../thumbs';
 import { INTERACTION_BY_ID } from '../../data/interactions';
 import { isJob, JOBS, jobLock, type JobKey } from '../../data/jobs';
 import { INTERIOR_DOOR, INTERIORS, PLACE_BY_ID, TOWN_SPAWN, type Place } from '../../data/town';
@@ -12,14 +12,14 @@ import { THEMES } from '../../data/themes';
 import type { Placement, Tile } from '../../core/grid';
 import { layoutOf } from '../../core/layout';
 import type { AreaEvents, AreaScene, Hotspot } from '../../engine/area';
-import { InteriorScene } from '../../engine/interior';
+import type { InteriorScene } from '../../engine/interior';
 import { HomeScene, type ScreenPoint, type SettleState } from '../../engine/scene';
-import { TownScene } from '../../engine/town';
+import type { TownScene } from '../../engine/town';
 import type { LocalBackend } from '../../net/local';
 import type { GameKind, LiveMsg } from '../../net/types';
 import { loadLast, saveLast } from '../../state/resume';
 import { area, areaName, inside, insideOf, partnerArea, shopCtx, type AreaId } from '../../state/area';
-import { act, backend, coins, couple, day, markFeedSeen, partner, partnerLastSeen, partnerOnline, prefs, sheet, snap, toast, tourReplay, unseen, type Sheet } from '../../state/store';
+import { act, backend, coins, couple, day, markFeedSeen, painted, partner, partnerLastSeen, partnerOnline, prefs, sceneCovers, sheet, snap, toast, tourReplay, unseen, withLoading, type Sheet } from '../../state/store';
 import { Coin, Icon } from '../kit';
 import { FurnitureBubble, MeBubble, PartnerBubble, SayBubble } from '../overlays/Bubbles';
 import { Tour } from '../overlays/Tour';
@@ -33,13 +33,26 @@ import { Realty } from '../panels/Realty';
 import { TownMap } from '../panels/TownMap';
 import { Shop } from '../panels/Shop';
 import { boutiqueEntries, furnitureEntries } from '../shopstock';
-import { savedShift, Work } from '../panels/Work';
+import { savedShift } from '../../state/shift';
+import { lazy } from '../lazy';
+import type { Work as WorkPanel } from '../panels/Work';
 import { deliverShiftMsg } from '../jobs/common';
 import { OutfitGift, Wardrobe } from '../panels/Wardrobe';
 import { GameSheet } from '../games/GameSheet';
 import { Celebrate, Feed, ItemSheet, Quests, SinceDate, todaysMilestone, type ItemSheetKind } from '../panels/Small';
 
 export let sceneRef: HomeScene | null = null;
+
+/** The job games load when a workplace is first opened. */
+const Work = lazy<Parameters<typeof WorkPanel>[0]>(() => import('../panels/Work').then((m) => m.Work));
+
+/** The town and the buildings' code, loaded the first time it's needed (it isn't, to open the home). */
+let places: Promise<{ TownScene: typeof TownScene; InteriorScene: typeof InteriorScene }> | null = null;
+function loadPlaces() {
+  places ??= Promise.all([import('../../engine/town'), import('../../engine/interior')]).then(([t, i]) => ({ TownScene: t.TownScene, InteriorScene: i.InteriorScene }));
+  places.catch(() => { places = null; });
+  return places;
+}
 
 type Bubble =
   | { kind: 'furniture'; p: Placement; at: ScreenPoint }
@@ -78,50 +91,64 @@ export function Home() {
   const partnerSettled = useRef<SettleState | null>(null);
 
   // ---------- create the scene ----------
+  // Building the room takes a moment on a phone, so it happens behind the loading screen, and
+  // the room's shaders are compiled and its first frames drawn before the screen lifts.
   useEffect(() => {
-    const s0 = snap.value!;
-    const last = loadLast(s0.couple!.id);
-    const canvas = document.createElement('canvas');
-    host.current!.appendChild(canvas);
-    const T = THEMES[prefs.value.theme];
-    const st = s0.couple!.style;
-    const sc = new HomeScene(canvas, prefs.value.theme, { wallpaper: st.wallpaper, wallTint: st.wallTint || T.wall.tint, floor: st.floor, floorTint: st.floorTint, rooms: st.rooms, curtains: s0.unlocks.includes('up_curtains') }, { me: s0.me.look, partner: s0.partner?.look ?? s0.me.look }, {
-      tapFurniture: (p, at) => { sfx('tap'); setBubble({ kind: 'furniture', p, at }); },
-      tapPartner: (at) => { if (!snap.value?.partner) return; sfx('tap'); setBubble({ kind: 'partner', at }); },
-      tapMe: (at) => { sfx('tap'); setBubble({ kind: 'me', at }); },
-      tapEmpty: () => { setBubble(null); },
-      tapDoor: () => goRef.current?.('town', 'home'),
-      walked: (from, path) => { mySettled.current = null; backend.send({ t: 'walk', from, path }); },
-      settled: (state) => { mySettled.current = state; backend.send({ t: 'settle', state }); },
-      decorTap: (p) => decorTapRef.current?.(p),
-      placingChanged: (s) => placingRef.current?.(s),
-    }, layoutOf(s0.couple!.home));
-    sceneRef = sc;
-    if (import.meta.env.DEV) (window as unknown as { __oph: unknown }).__oph = { sc, act, areas: () => areas.current, go: (to: AreaId, from?: string) => goRef.current?.(to, from) };
-    sc.sync(s0.placements);
-    sc.partner.group.visible = !!s0.partner;
-    // Back where we were when the app was last open (or the middle of the room the first time).
-    sc.placeActors(last?.me.tile ?? { x: 3, y: 4 }, last?.partner?.tile ?? { x: 4, y: 4 });
-    if (last?.me.settle && sc.restoreSettle('me', last.me.settle)) mySettled.current = last.me.settle;
-    if (last?.partner?.settle && sc.restoreSettle('partner', last.partner.settle)) partnerSettled.current = last.partner.settle;
-    backend.send({ t: 'settle', state: sc.mySettleState(mySettled.current) });
-    sc.setPartnerOnline(partnerOnline.value);
-    const fit = () => { const r = host.current!.getBoundingClientRect(); sc.resize(r.width, r.height); };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(host.current!);
-    sc.start();
-    setScene(sc);
-    // Reopen what was open: a solo shift in progress first, otherwise the last sheet.
-    if (savedShift()) sheet.value = 'work';
-    else if (last?.sheet && last.sheet !== 'decorate' && last.sheet !== 'shop' && last.sheet !== 'work' && last.sheet !== 'realty' && last.sheet !== 'bakery') sheet.value = last.sheet;
-    if (last?.notesTab) setNotesTab(last.notesTab as NotesTab);
-    // Music needs a tap before the phone lets it play.
-    if (last?.music) {
-      const resumeMusic = () => { if (!musicPlaying()) { startMusic(0); setMusic(true); } };
-      window.addEventListener('pointerdown', resumeMusic, { once: true });
-    }
-    return () => { ro.disconnect(); sc.destroy(); canvas.remove(); sceneRef = null; };
+    let built: { sc: HomeScene; ro: ResizeObserver; canvas: HTMLCanvasElement } | null = null;
+    let gone = false;
+    void withLoading('Coming home…', async () => {
+      if (gone) return;
+      const s0 = snap.value!;
+      const last = loadLast(s0.couple!.id);
+      const canvas = document.createElement('canvas');
+      host.current!.appendChild(canvas);
+      const T = THEMES[prefs.value.theme];
+      const st = s0.couple!.style;
+      const sc = new HomeScene(canvas, prefs.value.theme, { wallpaper: st.wallpaper, wallTint: st.wallTint || T.wall.tint, floor: st.floor, floorTint: st.floorTint, rooms: st.rooms, curtains: s0.unlocks.includes('up_curtains') }, { me: s0.me.look, partner: s0.partner?.look ?? s0.me.look }, {
+        tapFurniture: (p, at) => { sfx('tap'); setBubble({ kind: 'furniture', p, at }); },
+        tapPartner: (at) => { if (!snap.value?.partner) return; sfx('tap'); setBubble({ kind: 'partner', at }); },
+        tapMe: (at) => { sfx('tap'); setBubble({ kind: 'me', at }); },
+        tapEmpty: () => { setBubble(null); },
+        tapDoor: () => goRef.current?.('town', 'home'),
+        walked: (from, path) => { mySettled.current = null; backend.send({ t: 'walk', from, path }); },
+        settled: (state) => { mySettled.current = state; backend.send({ t: 'settle', state }); },
+        decorTap: (p) => decorTapRef.current?.(p),
+        placingChanged: (s) => placingRef.current?.(s),
+      }, layoutOf(s0.couple!.home));
+      sceneRef = sc;
+      if (import.meta.env.DEV) (window as unknown as { __oph: unknown }).__oph = { sc, act, areas: () => areas.current, go: (to: AreaId, from?: string) => goRef.current?.(to, from) };
+      sc.sync(s0.placements);
+      sc.partner.group.visible = !!s0.partner;
+      // Back where we were when the app was last open (or the middle of the room the first time).
+      sc.placeActors(last?.me.tile ?? { x: 3, y: 4 }, last?.partner?.tile ?? { x: 4, y: 4 });
+      if (last?.me.settle && sc.restoreSettle('me', last.me.settle)) mySettled.current = last.me.settle;
+      if (last?.partner?.settle && sc.restoreSettle('partner', last.partner.settle)) partnerSettled.current = last.partner.settle;
+      backend.send({ t: 'settle', state: sc.mySettleState(mySettled.current) });
+      sc.setPartnerOnline(partnerOnline.value);
+      const fit = () => { const r = host.current!.getBoundingClientRect(); sc.resize(r.width, r.height); };
+      fit();
+      const ro = new ResizeObserver(fit);
+      ro.observe(host.current!);
+      built = { sc, ro, canvas };
+      sc.start();
+      setScene(sc);
+      // Reopen what was open: a solo shift in progress first, otherwise the last sheet.
+      if (savedShift()) sheet.value = 'work';
+      else if (last?.sheet && last.sheet !== 'decorate' && last.sheet !== 'shop' && last.sheet !== 'work' && last.sheet !== 'realty' && last.sheet !== 'bakery') sheet.value = last.sheet;
+      if (last?.notesTab) setNotesTab(last.notesTab as NotesTab);
+      // Music needs a tap before the phone lets it play.
+      if (last?.music) {
+        const resumeMusic = () => { if (!musicPlaying()) { startMusic(0); setMusic(true); } };
+        window.addEventListener('pointerdown', resumeMusic, { once: true });
+      }
+      await sc.r.compile(sc.r.scene, sc.r.scene).catch(() => {});
+      await painted();
+    });
+    return () => {
+      gone = true;
+      if (built) { built.ro.disconnect(); built.sc.destroy(); built.canvas.remove(); }
+      sceneRef = null;
+    };
   }, []);
 
   // ---------- walking between home, the street and the buildings ----------
@@ -138,15 +165,15 @@ export function Home() {
   };
   const looksNow = () => { const st = snap.value!; return { me: st.me.look, partner: st.partner?.look ?? st.me.look }; };
   const lockedPlaces = () => new Set(Object.values(PLACE_BY_ID).filter((p) => p.jobs && p.jobs.every((j) => jobLock(snap.value?.me, j))).map((p) => p.id));
-  const getTown = () => {
+  const getTown = async () => {
     const a = areas.current;
-    if (!a.town) { a.town = new TownScene(sceneRef!.r, prefs.value.theme, looksNow(), areaEvents); a.town.setLocked(lockedPlaces()); }
+    if (!a.town) { const { TownScene } = await loadPlaces(); a.town = new TownScene(sceneRef!.r, prefs.value.theme, looksNow(), areaEvents); a.town.setLocked(lockedPlaces()); }
     return a.town;
   };
-  const getInside = (id: string) => {
+  const getInside = async (id: string) => {
     const a = areas.current;
     let i = a.ins.get(id);
-    if (!i) { i = new InteriorScene(sceneRef!.r, prefs.value.theme, INTERIORS[id], looksNow(), areaEvents); a.ins.set(id, i); }
+    if (!i) { const { InteriorScene } = await loadPlaces(); i = new InteriorScene(sceneRef!.r, prefs.value.theme, INTERIORS[id], looksNow(), areaEvents); a.ins.set(id, i); }
     return i;
   };
   const here = (): AreaScene | null => areas.current.active;
@@ -179,35 +206,61 @@ export function Home() {
     a.busy = true;
     setBubble(null); setTalk(null); setWheel(false); setMapOpen(false); setDistrict(null);
     setFade(true);
-    setTimeout(() => {
-      if (area.value === 'home') sc.pause(); else a.active?.pause();
+    setTimeout(async () => {
+      const prev = a.active;
+      if (area.value === 'home') sc.pause(); else prev?.pause();
       let at: Tile;
-      if (to === 'home') {
-        a.active = null;
-        sc.resume();
-        at = sc.layout.door;
-        sc.me.stand();
-        sc.me.place(at);
-      } else if (to === 'town') {
-        const t = getTown();
-        at = from && PLACE_BY_ID[from] ? PLACE_BY_ID[from].door : TOWN_SPAWN;
-        t.setLocked(lockedPlaces());
-        t.placeMe(at);
-        a.active = t;
-        t.start();
-      } else {
-        const i = getInside(insideOf(to)!);
-        stockShop(insideOf(to));
-        at = INTERIOR_DOOR;
-        i.placeMe(at);
-        a.active = i;
-        i.start();
+      // A place visited for the first time is built, its shaders compiled and its first frames
+      // drawn behind the loading screen, so the fade never opens on a frozen picture.
+      const arrive = async (fresh: boolean, label: string, enter: () => Promise<AreaScene>) => {
+        if (!fresh) { (await enter()).start(); return; }
+        await withLoading(label, async () => {
+          const sceneHere = await enter();
+          sceneHere.start();
+          await sc.r.compile(sceneHere.scene, sceneHere.scene).catch(() => {});
+          await painted();
+        });
+      };
+      try {
+        if (to === 'home') {
+          a.active = null;
+          sc.resume();
+          at = sc.layout.door;
+          sc.me.stand();
+          sc.me.place(at);
+        } else if (to === 'town') {
+          at = from && PLACE_BY_ID[from] ? PLACE_BY_ID[from].door : TOWN_SPAWN;
+          await arrive(!a.town, 'Walking into town…', async () => {
+            const t = await getTown();
+            t.setLocked(lockedPlaces());
+            t.placeMe(at);
+            a.active = t;
+            return t;
+          });
+        } else {
+          const id = insideOf(to)!;
+          at = INTERIOR_DOOR;
+          await arrive(!a.ins.has(id), `Stepping into ${PLACE_BY_ID[id]?.name ?? 'the shop'}…`, async () => {
+            const i = await getInside(id);
+            stockShop(id);
+            i.placeMe(at);
+            a.active = i;
+            return i;
+          });
+        }
+        area.value = to;
+        backend.send({ t: 'area', area: to, at });
+        showPartner(at);
+      } catch {
+        // Usually the town's code couldn't be fetched (offline on a first visit): stay where we were.
+        a.active?.pause();
+        a.active = prev;
+        if (area.value === 'home') sc.resume(); else prev?.start();
+        toast('Couldn’t get there. Check your connection and try again.', 'error');
+      } finally {
+        setFade(false);
+        a.busy = false;
       }
-      area.value = to;
-      backend.send({ t: 'area', area: to, at });
-      showPartner(at);
-      setFade(false);
-      a.busy = false;
     }, 240);
   };
 
@@ -305,16 +358,26 @@ export function Home() {
   useSignalEffect(() => {
     const s = snap.value;
     if (!scene || !s?.couple) return;
-    scene.setLayout(layoutOf(s.couple.home));
-    scene.sync(s.placements);
-    if (area.value === 'home') scene.partner.group.visible = !!s.partner && (partnerArea.value === 'home' || !partnerOnline.value);
+    const showPartnerHere = area.value === 'home' ? !!s.partner && (partnerArea.value === 'home' || !partnerOnline.value) : null;
     const T = THEMES[prefs.value.theme];
-    const st = s.couple.style;
-    scene.setStyle({ wallpaper: st.wallpaper, wallTint: st.wallTint || T.wall.tint, floor: st.floor, floorTint: st.floorTint, curtains: s.unlocks.includes('up_curtains') });
-    scene.setLooks(s.me.look, s.partner?.look ?? s.me.look);
+    const apply = () => {
+      scene.sync(s.placements);
+      if (showPartnerHere != null) scene.partner.group.visible = showPartnerHere;
+      const st = s.couple!.style;
+      scene.setStyle({ wallpaper: st.wallpaper, wallTint: st.wallTint || T.wall.tint, floor: st.floor, floorTint: st.floorTint, curtains: s.unlocks.includes('up_curtains') });
+      scene.setLooks(s.me.look, s.partner?.look ?? s.me.look);
+    };
+    // A new home is a whole new room to build: do it behind the loading screen.
+    const L = layoutOf(s.couple.home);
+    if (L !== scene.layout) void withLoading('Moving in…', () => { scene.setLayout(L); apply(); return scene.warm(s.placements.map((p) => p.item), true); });
+    else apply();
   });
 
-  useSignalEffect(() => { scene?.setTheme(prefs.value.theme); });
+  useSignalEffect(() => {
+    const th = prefs.value.theme;
+    if (scene && scene.themeKey !== th) void withLoading('Repainting…', () => { scene.setTheme(th); return scene.warm(snap.value?.placements.map((p) => p.item) ?? [], true); });
+  });
+  useSignalEffect(() => { if (scene) scene.r.covered = sceneCovers.value > 0; });
   useSignalEffect(() => {
     if (!scene) return;
     scene.r.effectsWanted = prefs.value.effects;
@@ -336,18 +399,22 @@ export function Home() {
     scene.setWallContext({ partnerOffsetMin: offset, myLabel: s.me.city ?? 'ME', partnerLabel: s.partner?.city ?? s.partner?.name ?? '', daysToVisit, visitDate: next ?? null, notes });
   });
 
-  // Photos in frames.
+  // Photos in frames. Each photo is fetched once; every other update leaves the frames alone.
+  const photos = useRef(new Map<string, string>());
   useSignalEffect(() => {
     const s = snap.value;
     if (!scene || !s) return;
     for (const p of s.placements) {
       const path = (p.data as { photo?: string } | null)?.photo;
-      if (!path) continue;
+      if (!path || photos.current.get(p.id) === path) continue;
+      photos.current.set(p.id, path);
       void backend.photoUrl(path).then((url) => {
-        if (!url) return;
+        if (!url) { photos.current.delete(p.id); return; }
         const img = new Image();
         img.crossOrigin = 'anonymous';
+        img.decoding = 'async';
         img.onload = () => sceneRef?.setPhoto(p.id, img);
+        img.onerror = () => photos.current.delete(p.id);
         img.src = url;
       });
     }
@@ -405,6 +472,11 @@ export function Home() {
       const owned = s.inventory.map((r) => r.item);
       const shop = ITEMS.filter((i) => i.kind === 'floor-item' || i.kind === 'wall-item').map((i) => i.key);
       prewarmThumbs([...new Set([...owned, ...shop])], prefs.value.theme);
+      // And have every piece built and its shaders compiled before anyone picks one up, and
+      // the town's code fetched before anyone steps outside.
+      void sceneRef?.warm([...s.placements.map((p) => p.item), ...owned, ...shop]);
+      void loadPlaces();
+      Work.preload();
     }, 2500);
     return () => clearTimeout(t);
   }, []);
@@ -437,6 +509,22 @@ export function Home() {
 
   const { fired: godFired, ...godHold } = useGodHold();
   const open = (s: Sheet) => { setBubble(null); sfx(s ? 'open' : 'close'); sheet.value = sheet.value === s ? null : s; };
+
+  // Decorate wants every piece in the box ready to pick up, pictures and all. Usually the idle
+  // warm-up has done that already; if not, it finishes behind the loading screen first.
+  const openDecorate = async () => {
+    const st = snap.value;
+    if (!scene || !st || sheet.value === 'decorate') { open('decorate'); return; }
+    const theme = prefs.value.theme;
+    const boxed = st.inventory.map((r) => r.item);
+    const keys = [...boxed, ...st.placements.map((p) => p.item)];
+    const pics = boxed.filter((k) => cachedThumb(k, theme) == null);
+    if (!scene.isWarm(keys) || pics.length) {
+      setBubble(null);
+      await withLoading('Unpacking the box…', () => Promise.all([scene.warm(keys, true), ...pics.map((k) => requestThumb(k, theme))]));
+    }
+    open('decorate');
+  };
 
   const startGame = async (kind: GameKind, p?: Placement) => {
     setBubble(null);
@@ -584,7 +672,7 @@ export function Home() {
       {sheet.value !== 'decorate' && area.value === 'home' && (
         <nav class="bottombar">
           {([['decorate', 'decorate', 'Decorate'], ['notes', 'notes', 'Notes'], ['me', 'me', 'Me']] as const).map(([k, icon, label]) => (
-            <button class="navbtn" aria-pressed={sheet.value === k} onClick={() => open(k)} data-tour={k}>
+            <button class="navbtn" aria-pressed={sheet.value === k} onClick={() => (k === 'decorate' ? void openDecorate() : open(k))} data-tour={k}>
               <Icon name={icon} />
               <span>{label}</span>
             </button>

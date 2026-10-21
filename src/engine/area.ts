@@ -374,9 +374,13 @@ export abstract class AreaScene {
     this.pause();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
-      m.geometry?.dispose?.();
+      if (!m.geometry?.userData.shared) m.geometry?.dispose?.();
       const mats = m.material ? (Array.isArray(m.material) ? m.material : [m.material]) : [];
-      for (const mm of mats) { if (!mm.userData.shared) { (mm as THREE.MeshLambertMaterial).map?.dispose(); (mm as THREE.MeshLambertMaterial).emissiveMap?.dispose(); mm.dispose(); } }
+      for (const mm of mats) {
+        if (mm.userData.shared) continue;
+        for (const t of [(mm as THREE.MeshLambertMaterial).map, (mm as THREE.MeshLambertMaterial).emissiveMap]) if (t && !t.userData.shared) t.dispose();
+        mm.dispose();
+      }
     });
     this.me.dispose();
     this.partner.dispose();

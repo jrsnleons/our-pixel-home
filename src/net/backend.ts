@@ -87,6 +87,8 @@ export interface Backend {
   uploadPhoto(file: Blob): Promise<string>;
   photoUrl(path: string): Promise<string>;
   passage(book: number, chapter: number, from?: number, to?: number): Promise<Passage>;
+  /** Start from a home kept on the phone (see state/offline.ts) while the real one loads. */
+  adopt?(s: Snapshot): void;
   /** Preview only: flip the simulated partner online/offline. */
   setPartnerOnline?(online: boolean): void;
 }

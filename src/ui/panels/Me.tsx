@@ -6,7 +6,7 @@ import { InstallRow } from '../overlays/Install';
 import { setSfx, sfx } from '../../audio/audio';
 import { ESV_NOTICE } from '../../data/bible';
 import { THEME_ORDER, THEMES } from '../../data/themes';
-import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, sheet, snap, toast, tourReplay } from '../../state/store';
+import { act, backend, couple, me, partner, partnerOnline, prefs, setPrefs, sheet, signOut, snap, toast, tourReplay } from '../../state/store';
 import { hasWardrobe } from '../../net/rules';
 import { EditorStage } from '../AvatarEditor';
 import { Field, Icon, Sheet, Tabs } from '../kit';
@@ -115,7 +115,7 @@ function Settings() {
         <Toggle label="Preview: Sam is online" hint="Turn off to see Sam asleep." on={partnerOnline.value} set={(v) => backend.setPartnerOnline!(v)} />
       )}
       <div class="hr" />
-      <button class="btn ghost small" onClick={async () => { if (confirm(backend.mode === 'preview' ? 'Reset the preview? Everything here will be cleared.' : 'Sign out?')) { await backend.signOut(); location.reload(); } }}>{backend.mode === 'preview' ? 'Reset preview' : 'Sign out'}</button>
+      <button class="btn ghost small" onClick={async () => { if (confirm(backend.mode === 'preview' ? 'Reset the preview? Everything here will be cleared.' : 'Sign out?')) { await signOut(); location.reload(); } }}>{backend.mode === 'preview' ? 'Reset preview' : 'Sign out'}</button>
       <p class="copyright">{ESV_NOTICE}</p>
       <p class="tiny muted">Our Pixel Home · made for the two of you <Icon name="heart" size="s" /></p>
     </div>

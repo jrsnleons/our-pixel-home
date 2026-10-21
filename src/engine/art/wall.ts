@@ -31,6 +31,8 @@ export interface WallArt {
   glow?: THREE.Mesh[];
   /** Repaint dynamic faces; returns true if anything changed. */
   refresh?: (ctx: WallContext) => void;
+  /** Shows the time or date, so it repaints as the clock moves, not only when its context does. */
+  clock?: boolean;
   tick?: (t: number) => void;
 }
 
@@ -40,6 +42,7 @@ function liveFace(w: number, h: number, x: number, y: number, z: number, emissiv
   const map = texture(c);
   const mat = new THREE.MeshLambertMaterial({ map, emissive: emissive ? '#ffffff' : '#000000', emissiveMap: emissive ? map : null, emissiveIntensity: emissive ? 0.35 : 0 });
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.userData.live = true;
   m.position.set(x + w / 2, y + h / 2, z);
   m.receiveShadow = true;
   return { mesh: m, g, w: c.width, h: c.height, update: () => { map.needsUpdate = true; } };
@@ -109,6 +112,7 @@ function photoFrame(P: Pal, w: number, h: number): WallArt {
   const face = new THREE.Mesh(new THREE.PlaneGeometry(fw, fh), new THREE.MeshLambertMaterial({ map }));
   face.position.set(0.1 + fw / 2, 0.1 + fh / 2, 0.065);
   face.receiveShadow = true;
+  face.userData.live = true;
   g.add(face);
   const W = c.width, H = c.height;
   const refresh = (ctx: WallContext) => {
@@ -222,7 +226,7 @@ const builders: Record<string, (P: Pal) => WallArt> = {
       f.update();
     };
     refresh({});
-    return { group: g, refresh };
+    return { group: g, refresh, clock: true };
   },
 
   wall_calendar: (P) => {
@@ -244,7 +248,7 @@ const builders: Record<string, (P: Pal) => WallArt> = {
       f.update();
     };
     refresh({});
-    return { group: g, refresh };
+    return { group: g, refresh, clock: true };
   },
 
   wall_corkboard: (P) => {

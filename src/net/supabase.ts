@@ -68,6 +68,8 @@ export class SupabaseBackend implements Backend {
     this.partnerId = s.couple.a === this.uid ? s.couple.b : s.couple.a;
   }
 
+  adopt(s: Snapshot) { this.remember(s); }
+
   async load(): Promise<Snapshot | null> {
     if (!this.uid) await this.user();
     if (!this.uid) return null;

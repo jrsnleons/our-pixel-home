@@ -249,9 +249,13 @@ export class Renderer {
     this.renderer.setAnimationLoop(null);
   }
 
+  /** Something covers the whole canvas: keep the world ticking but skip drawing it. */
+  covered = false;
+
   private frame(now: number) {
     const raw = (now - this.last) / 1000;
     this.last = now;
+    if (this.covered) { this.onFrame?.(Math.min(raw, 0.05), (now - this.t0) / 1000); return; }
     if (this.batterySaver) {
       this.acc += raw;
       if (this.acc < 1 / 31) return;
@@ -289,6 +293,29 @@ export class Renderer {
       this.lastDrop = now;
       storageSet('oph.quality', String(this.level));
       this.resize(this.w, this.h);
+    }
+  }
+
+  /**
+   * Compile the shaders `obj` will need when drawn into `into`, without drawing it. Shaders
+   * differ by where they draw (the effects' offscreen buffer or the screen), so this compiles
+   * for wherever frames go right now.
+   */
+  async compile(obj: THREE.Object3D, into: THREE.Scene = this.active) {
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    if (this.effectsWanted && this.quality.effects) r.setRenderTarget(this.composer.readBuffer);
+    let pending: Set<THREE.Material>;
+    try { pending = r.compile(obj, this.camera, into); } finally { r.setRenderTarget(prev); }
+    // Where the GPU compiles in the background, wait for it (three's own compileAsync trips
+    // over a material that is thrown away meanwhile). Never wait more than a few seconds.
+    const t0 = performance.now();
+    while (pending.size && performance.now() - t0 < 4000) {
+      for (const m of pending) {
+        const prog = (r.properties.get(m) as { currentProgram?: { isReady(): boolean } }).currentProgram;
+        if (!prog || prog.isReady()) pending.delete(m);
+      }
+      if (pending.size) await new Promise((res) => setTimeout(res, 16));
     }
   }
 

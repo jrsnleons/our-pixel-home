@@ -13,6 +13,7 @@ import { act, backend, couple, partner, partnerOnline, snap, toast } from '../..
 import { CafeShift, cafeBackdrop } from '../jobs/Cafe';
 import { BugShift, bugsThumb } from '../jobs/Bugs';
 import type { Role, ShiftProgress, ShiftProps } from '../jobs/common';
+import { clearSaved, LIVE_KEY, savedShift, type LiveShift } from '../../state/shift';
 import { InboxShift, inboxThumb } from '../jobs/Inbox';
 import { DeliveryShift, streetThumb } from '../jobs/Delivery';
 import { FlowerShift, flowerBackdrop } from '../jobs/Flowers';
@@ -25,20 +26,6 @@ const GAMES: Record<JobKey, { Shift: (p: ShiftProps) => preact.JSX.Element; thum
   bugs: { Shift: BugShift, thumb: bugsThumb },
   inbox: { Shift: InboxShift, thumb: inboxThumb },
 };
-
-/** The solo shift in progress, saved as it runs so closing the app doesn't lose it. */
-const LIVE_KEY = 'oph.liveShift';
-interface LiveShift extends ShiftProgress { id: string; job: JobKey; savedAt: number }
-
-export function savedShift(): LiveShift | null {
-  try {
-    const v = JSON.parse(localStorage.getItem(LIVE_KEY) ?? 'null') as LiveShift | null;
-    // The server only pays a shift for a while after it started; older ones are gone.
-    if (!v || !JOBS[v.job] || Date.now() - v.savedAt > 30 * 60_000 || v.t >= SHIFT.shiftSeconds - 1) return null;
-    return v;
-  } catch { return null; }
-}
-const clearSaved = () => { try { localStorage.removeItem(LIVE_KEY); } catch { /* private mode */ } };
 
 interface Result { job: JobKey; pay: number; level: number; levelUp: boolean; opened: JobKey | null; openedAll?: JobKey[]; served: number; missed: number }
 

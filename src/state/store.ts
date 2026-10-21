@@ -1,13 +1,14 @@
 // App state as signals. Every server action goes through `act`, which merges what changed,
 // shows earned coins, and turns rule errors into a friendly toast.
 
-import { batch, computed, signal } from '@preact/signals';
+import { batch, computed, effect, signal } from '@preact/signals';
 import { ITEM_BY_KEY } from '../data/catalog';
 import { PIECE_BY_KEY } from '../data/clothes';
 import { daysTogether } from '../data/economy';
 import type { ThemeKey } from '../data/themes';
 import { ActionError, type Backend, type RpcName, type Rpcs } from '../net/backend';
 import type { FeedEvent, Patch, Snapshot } from '../net/types';
+import { forgetHome, keepHome, keptHome } from './offline';
 
 export type Phase = 'boot' | 'signin' | 'profile' | 'pair' | 'home' | 'archived';
 export type Sheet = 'shop' | 'work' | 'decorate' | 'notes' | 'me' | 'quests' | 'feed' | 'wardrobe' | 'realty' | 'bakery' | null;
@@ -44,25 +45,92 @@ export const phase = signal<Phase>('boot');
 /** A name to prefill when making the avatar, from the account if it has one. */
 export const suggestedName = signal<string | null>(null);
 
-/** Pick the screen for where this person is: signed out, no avatar yet, unpaired, or home. */
+/**
+ * Pick the screen for where this person is: signed out, no avatar yet, unpaired, or home. The
+ * installed app opens straight into the home kept from last time and swaps in the server's copy
+ * when it arrives; with no signal, the kept home is what you get until there is one.
+ */
 export async function route() {
-  const u = await backend.user();
-  if (!u) { phase.value = 'signin'; return; }
+  const online = backend.mode === 'online';
+  const u = await backend.user().catch(() => null);
+  const kept = !online ? null : u ? keptHome(u.id) : navigator.onLine ? null : keptHome(null);
+  const showKept = () => {
+    if (!kept?.couple || kept.couple.archivedAt || phase.value === 'home') return false;
+    backend.adopt?.(kept);
+    snap.value = kept;
+    phase.value = 'home';
+    return true;
+  };
+  if (!u) {
+    // Signed in before but can't check right now (offline with an expired sign-in): the kept home, until there's signal.
+    if (!navigator.onLine && showKept()) { addEventListener('online', () => location.reload(), { once: true }); return; }
+    phase.value = 'signin';
+    return;
+  }
   suggestedName.value = u.name ?? null;
-  const s = await backend.load();
+  showKept();
+  let s: Snapshot | null;
+  try { s = await backend.load(); } catch (e) {
+    if (phase.value !== 'home') throw e;
+    toast('You’re offline. This is your home as you last saw it.', 'info');
+    addEventListener('online', () => void route(), { once: true });
+    return;
+  }
   if (!s) { phase.value = 'profile'; return; }
   snap.value = s;
   if (!s.couple) phase.value = 'pair';
   else if (s.couple.archivedAt) phase.value = 'archived';
   else phase.value = 'home';
 }
+
+/** Sign out, and take this account's kept home off the phone. */
+export async function signOut() {
+  forgetHome();
+  await backend.signOut();
+}
+
 export const snap = signal<Snapshot | null>(null);
+
+// Keep the latest home on the phone for the next start (a moment after it settles, not on every change).
+let keepTimer = 0;
+effect(() => {
+  const s = snap.value;
+  if (!s?.couple || backend?.mode !== 'online') return;
+  clearTimeout(keepTimer);
+  keepTimer = window.setTimeout(() => keepHome(s.me.id, s), 1500);
+});
 export const partnerOnline = signal(false);
 export const partnerLastSeen = signal<string | null>(null);
 export const sheet = signal<Sheet>(null);
 /** Set from Settings to walk through the home screen tour again. */
 export const tourReplay = signal(false);
 export const busy = signal(false);
+
+/** How many full-screen sheets are open over the room (which isn't drawn while any are). */
+export const sceneCovers = signal(0);
+
+/** What the pixel loading screen says while it's up (null: hidden). */
+export const loading = signal<string | null>(null);
+let loadingDepth = 0;
+
+/** Two frames from now, by which point anything just put on screen has really been painted. */
+export const painted = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+/**
+ * Show the loading screen while `work` runs. The screen is painted before the work starts, so
+ * even work that keeps the phone busy for a moment shows a little walking heart, never a
+ * frozen picture. Its animation runs off the main thread, so it keeps moving meanwhile.
+ */
+export async function withLoading<T>(label: string, work: () => T | Promise<T>): Promise<T> {
+  loadingDepth++;
+  loading.value = label;
+  try {
+    await painted();
+    return await work();
+  } finally {
+    if (--loadingDepth === 0) loading.value = null;
+  }
+}
 
 export interface Toast { id: number; text: string; kind: 'info' | 'coins' | 'error' | 'love'; coins?: number }
 export const toasts = signal<Toast[]>([]);

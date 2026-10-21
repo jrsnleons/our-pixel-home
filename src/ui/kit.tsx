@@ -3,7 +3,7 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { THEMES } from '../data/themes';
-import { prefs } from '../state/store';
+import { prefs, sceneCovers } from '../state/store';
 import { iconUrl } from './icons';
 
 export function Icon({ name, size = '', alt = '' }: { name: string; size?: '' | 's' | 'l'; alt?: string }) {
@@ -21,6 +21,12 @@ export function Sheet(props: { title: ComponentChildren; onClose: () => void; ch
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
   }, [props.onClose]);
+  // Nothing of the room shows behind a full-screen sheet, so stop drawing it meanwhile.
+  useEffect(() => {
+    if (props.size !== 'full') return;
+    sceneCovers.value++;
+    return () => { sceneCovers.value--; };
+  }, [props.size]);
   return (
     <div class={`sheet-wrap ${props.dim === false ? '' : 'dim'}`} onClick={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
       <section class={`sheet ${props.size ?? ''}`} role="dialog" aria-label={typeof props.title === 'string' ? props.title : undefined}>

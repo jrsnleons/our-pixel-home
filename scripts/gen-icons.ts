@@ -96,22 +96,51 @@ function scene(n: number, o: number): Grid {
 
 function png(g: Grid, size: number, pad = 0): Buffer {
   const scale = (size - 2 * pad) / g.n;
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) {
-    raw[y * (size * 4 + 1)] = 0;
-    for (let x = 0; x < size; x++) {
-      const gx = Math.min(g.n - 1, Math.max(0, Math.floor((x - pad) / scale)));
-      const gy = Math.min(g.n - 1, Math.max(0, Math.floor((y - pad) / scale)));
-      const [r, gg, b] = g.px[gy * g.n + gx];
-      raw.set([r, gg, b, 255], y * (size * 4 + 1) + 1 + x * 4);
-    }
+  return encode(size, size, (x, y) => {
+    const gx = Math.min(g.n - 1, Math.max(0, Math.floor((x - pad) / scale)));
+    const gy = Math.min(g.n - 1, Math.max(0, Math.floor((y - pad) / scale)));
+    return g.px[gy * g.n + gx];
+  });
+}
+
+/** An RGB PNG of w×h, colored pixel by pixel. */
+function encode(w: number, h: number, at: (x: number, y: number) => RGB): Buffer {
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 3 + 1)] = 0;
+    for (let x = 0; x < w; x++) raw.set(at(x, y), y * (w * 3 + 1) + 1 + x * 3);
   }
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr.set([8, 6, 0, 0, 0], 8);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
 }
+
+/**
+ * The picture an iPhone shows while a home-screen app starts (Android builds its own from the
+ * manifest): the icon's art, framed, in the middle of the app's background color. Without one
+ * an iPhone shows a blank white screen.
+ */
+function splash(g: Grid, w: number, h: number): Buffer {
+  const bg = hex('#1E140D');
+  const s = Math.max(1, Math.floor((w * 0.36) / g.n)); // whole screen pixels per art pixel, so it stays crisp
+  const side = g.n * s, b = Math.max(2, Math.round(s / 2)); // the art, and its outline
+  const x0 = Math.round((w - side) / 2), y0 = Math.round(h * 0.44 - side / 2);
+  return encode(w, h, (x, y) => {
+    const ix = x - x0, iy = y - y0;
+    if (ix >= 0 && iy >= 0 && ix < side && iy < side) return g.px[Math.floor(iy / s) * g.n + Math.floor(ix / s)];
+    if (ix >= -b && iy >= -b && ix < side + b && iy < side + b) return C.line;
+    return bg;
+  });
+}
+
+/** iPhone screens in portrait: pixel size, and the CSS size and pixel ratio iOS matches on. */
+export const SPLASH: [number, number, number, number, number][] = [
+  [1320, 2868, 440, 956, 3], [1290, 2796, 430, 932, 3], [1284, 2778, 428, 926, 3], [1242, 2688, 414, 896, 3],
+  [1242, 2208, 414, 736, 3], [1206, 2622, 402, 874, 3], [1179, 2556, 393, 852, 3], [1170, 2532, 390, 844, 3],
+  [1125, 2436, 375, 812, 3], [828, 1792, 414, 896, 2], [750, 1334, 375, 667, 2],
+];
 
 function chunk(type: string, data: Buffer): Buffer {
   const len = Buffer.alloc(4);
@@ -143,3 +172,10 @@ writeFileSync(`${out}/apple-touch-icon.png`, png(full, 180, 10));
 // margin that just continues the edge pixels (sky above, hill below).
 writeFileSync(`${out}/icon-maskable-512.png`, png(full, 512, 64));
 console.log('wrote', out);
+
+const splashOut = 'public/splash';
+mkdirSync(splashOut, { recursive: true });
+for (const [w, h, cw, ch, dpr] of SPLASH) {
+  writeFileSync(`${splashOut}/${w}x${h}.png`, splash(full, w, h));
+  console.log(`<link rel="apple-touch-startup-image" media="(device-width: ${cw}px) and (device-height: ${ch}px) and (-webkit-device-pixel-ratio: ${dpr}) and (orientation: portrait)" href="/splash/${w}x${h}.png" />`);
+}

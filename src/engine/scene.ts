@@ -12,9 +12,10 @@ import { INTERACTION_BY_ID } from '../data/interactions';
 import { THEMES, type Theme, type ThemeKey } from '../data/themes';
 import { Actor, facingTowards, type Facing } from './actor';
 import type { AvatarLook } from './art/avatar';
-import { buildFloorItem, type ItemArt } from './art/furniture';
+import { artKey, itemArt, keepTheme } from './art/bake';
+import type { ItemArt } from './art/furniture';
 import { dispose } from './art/kit';
-import { buildWallItem, type WallArt, type WallContext } from './art/wall';
+import type { WallArt, WallContext } from './art/wall';
 import { daylight, type Daylight } from './daylight';
 import { Effects, type FxKind } from './fx';
 import { Renderer } from './renderer';
@@ -48,12 +49,24 @@ export interface InteractionPlay {
   b: SettleState;
 }
 
-interface Inst { p: Placement; root: THREE.Group; art: ItemArt | WallArt; wall: boolean; pending?: boolean; pop?: number; leaving?: number }
+interface Inst { p: Placement; root: THREE.Group; art: ItemArt | WallArt; wall: boolean; pending?: boolean; pop?: number; leaving?: number; mats?: THREE.Material[]; painted?: string }
 
 type Timer = { at: number; fn: () => void };
 
 const SIT_ANIM = { frames: ['sit'], fps: 1 };
 const LIE_ANIM = { frames: ['lie'], fps: 1 };
+
+/** What decides which shader a material needs (roughly what three.js keys its programs on). */
+function variantOf(m: THREE.Material, ghost: boolean): string {
+  const x = m as THREE.MeshLambertMaterial;
+  return [m.type, !!x.map, x.alphaTest > 0, m.side, m.vertexColors, !!x.emissiveMap, ghost || m.transparent, m.toneMapped].join('|');
+}
+
+function materialsOf(o: THREE.Object3D): THREE.Material[] {
+  const out: THREE.Material[] = [];
+  o.traverse((n) => { const m = (n as THREE.Mesh).material; if (m) out.push(...(Array.isArray(m) ? m : [m])); });
+  return out;
+}
 
 export class HomeScene {
   readonly r: Renderer;
@@ -135,6 +148,7 @@ export class HomeScene {
     for (const id of [...this.items.keys()]) this.removeInst(id);
     this.placements = [];
     this.sync(all);
+    keepTheme(k);
   }
 
   /** The home grew (or shrank): rebuild the shell and the decorate grids, then put everything back. */
@@ -151,6 +165,7 @@ export class HomeScene {
   }
 
   get layout(): HomeLayout { return this.L; }
+  get themeKey(): ThemeKey { return this.theme.key; }
 
   /** Anything bigger than the studio is too wide for the screen: the camera follows you instead. */
   private get big() { return this.L.w * this.L.d > STUDIO.w * STUDIO.d; }
@@ -189,7 +204,9 @@ export class HomeScene {
     t.y = 1.05;
   }
 
+  /** Repaint walls and floors, only when the style actually changed (every data update calls this). */
   setStyle(style: RoomStyle) {
+    if (JSON.stringify(style) === JSON.stringify(this.style)) return;
     this.style = style;
     this.room.setStyle(style);
   }
@@ -233,7 +250,7 @@ export class HomeScene {
     for (const p of placements) {
       const cur = this.items.get(p.id);
       if (!cur) this.addInst(p);
-      else if (cur.p.item !== p.item || JSON.stringify(cur.p.data ?? null) !== JSON.stringify(p.data ?? null) && !cur.wall) { this.removeInst(p.id); this.addInst(p); }
+      else if (artKey(cur.p.item, '', cur.p.data) !== artKey(p.item, '', p.data)) { this.removeInst(p.id); this.addInst(p); }
       else if (cur.p.x !== p.x || cur.p.y !== p.y || cur.p.rot !== p.rot || cur.p.surface !== p.surface) { cur.p = p; this.positionInst(cur); }
       else cur.p = p;
     }
@@ -252,7 +269,7 @@ export class HomeScene {
     const def = ITEM_BY_KEY[p.item];
     if (!def) return;
     const wall = def.kind === 'wall-item';
-    const art = wall ? buildWallItem(p.item, this.theme) : buildFloorItem(p.item, this.theme, p.data);
+    const art = itemArt(p.item, this.theme, p.data);
     const root = new THREE.Group();
     root.add(art.group);
     root.userData.placementId = p.id;
@@ -380,7 +397,9 @@ export class HomeScene {
   toggleLamp(id: string) { this.lampOverride.set(id, !this.isLampOn(id)); this.refreshLights(); }
 
   setWallContext(ctx: WallContext) {
-    this.wallCtx = { ...this.wallCtx, ...ctx };
+    const next = { ...this.wallCtx, ...ctx };
+    if (JSON.stringify(next) === JSON.stringify(this.wallCtx)) return;
+    this.wallCtx = next;
     this.refreshWalls();
   }
 
@@ -391,13 +410,23 @@ export class HomeScene {
     if (inst) this.refreshWall(inst);
   }
 
-  private refreshWalls() { for (const i of this.items.values()) if (i.wall) this.refreshWall(i); }
+  /** `clocks` also repaints the pieces showing the time or date, which change by themselves. */
+  private refreshWalls(clocks = false) { for (const i of this.items.values()) if (i.wall) this.refreshWall(i, clocks && !!(i.art as WallArt).clock); }
 
-  private refreshWall(inst: Inst) {
+  private photoIds = new WeakMap<object, number>();
+  private photoN = 0;
+  private refreshWall(inst: Inst, force = false) {
     const art = inst.art as WallArt;
     if (!art.refresh) return;
     const data = inst.p.data ?? {};
-    art.refresh({ ...this.wallCtx, photo: this.photoCache.get(inst.p.id) ?? null, pixelate: Boolean(data.pixelate), verse: (data.verse as WallContext['verse']) ?? this.wallCtx.verse });
+    const photo = this.photoCache.get(inst.p.id) ?? null;
+    const ctx: WallContext = { ...this.wallCtx, photo, pixelate: Boolean(data.pixelate), verse: (data.verse as WallContext['verse']) ?? this.wallCtx.verse };
+    // Repainting uploads a new texture, so skip it when the picture would come out the same.
+    if (photo && !this.photoIds.has(photo)) this.photoIds.set(photo, ++this.photoN);
+    const sig = JSON.stringify({ ...ctx, photo: photo ? this.photoIds.get(photo) : null });
+    if (!force && sig === inst.painted) return;
+    inst.painted = sig;
+    art.refresh(ctx);
   }
 
   // ---------- Avatars ----------
@@ -683,6 +712,65 @@ export class HomeScene {
 
   get busy() { return this.interacting; }
 
+  // ---------- Getting ready ahead of time ----------
+
+  private warmed = new Set<string>();
+  private variants = new Set<string>();
+  /** Materials kept alive only so their compiled shaders stay cached. */
+  private warmKeep: THREE.Material[] = [];
+
+  /** True once every one of these pieces is built and its shaders compiled. */
+  isWarm(items: string[]) { return items.every((k) => this.warmed.has(`${this.theme.key}|${k}`)); }
+
+  /**
+   * Build these pieces and compile every shader they (and decorate mode) will need, a few at a
+   * time, so the first sofa you pick up, the ghost you drag and the grid never stall the phone
+   * while its GPU compiles. `urgent` works through them every frame (behind a loading screen);
+   * otherwise only while the phone is idle.
+   */
+  async warm(items: string[], urgent = false) {
+    const idle = (window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    const slice = () => new Promise<void>((res) => (urgent || !idle ? requestAnimationFrame(() => res()) : idle(() => res(), { timeout: 1500 })));
+    const plane = new THREE.PlaneGeometry(0.1, 0.1);
+    const queue = [...new Set(items)].filter((k) => ITEM_BY_KEY[k]);
+    // The decorate grid and the scene as it stands, first.
+    const compile = async (o: THREE.Object3D) => { try { await this.r.compile(o, this.r.scene); } catch { /* compiles on first draw instead */ } };
+    if (!this.variants.has('scene')) { this.variants.add('scene'); await compile(this.r.scene); }
+    while (queue.length) {
+      await slice();
+      const theme = this.theme.key;
+      const batch = new THREE.Group();
+      const t0 = performance.now();
+      while (queue.length && performance.now() - t0 < 8) {
+        const k = queue.shift()!;
+        const id = `${theme}|${k}`;
+        if (this.warmed.has(id)) continue;
+        this.warmed.add(id);
+        const art = itemArt(k, this.theme);
+        art.group.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+            // As it sits in the room, and as a see-through ghost while it's carried or saving.
+            for (const ghost of [false, true]) {
+              const v = `${variantOf(mat, ghost)}|${m.receiveShadow}`;
+              if (this.variants.has(v)) continue;
+              this.variants.add(v);
+              const c = mat.clone();
+              if (ghost) { c.transparent = true; c.opacity = 0.72; }
+              this.warmKeep.push(c);
+              const stand = new THREE.Mesh(plane, c);
+              stand.receiveShadow = m.receiveShadow;
+              batch.add(stand);
+            }
+          }
+        });
+        dispose(art.group);
+      }
+      if (batch.children.length) await compile(batch);
+    }
+  }
+
   // ---------- Decorate mode ----------
 
   private makeGrid(n: number): THREE.InstancedMesh {
@@ -785,7 +873,7 @@ export class HomeScene {
     const existing = opts.placementId ? this.items.get(opts.placementId) : undefined;
     const others = this.placements.filter((p) => p.id !== opts.placementId);
     const spot = existing ? { surface: existing.p.surface, x: existing.p.x, y: existing.p.y, rot: existing.p.rot } : findFreeSpot(def, others, [this.me.tile, this.partner.tile], this.L) ?? { surface: (def.kind === 'wall-item' ? 'back' : 'floor') as Surface, x: 0, y: 0, rot: 0 };
-    const art = def.kind === 'wall-item' ? buildWallItem(item, this.theme) : buildFloorItem(item, this.theme, opts.data);
+    const art = itemArt(item, this.theme, opts.data);
     const ghost = new THREE.Group();
     ghost.add(art.group);
     art.group.traverse((o) => {
@@ -796,6 +884,7 @@ export class HomeScene {
     if (existing) existing.root.visible = false;
     this.r.scene.add(ghost);
     this.placing = { item, placementId: opts.placementId, ...spot, fit: { ok: true }, ghost, art, data: opts.data };
+    this.placingSig = '';
     this.updatePlacing();
     return this.placingState();
   }
@@ -816,8 +905,11 @@ export class HomeScene {
     const fake: Inst = { p: { id: '__ghost', item: pl.item, surface: pl.surface, x: pl.x, y: pl.y, rot: pl.rot }, root: pl.ghost, art: pl.art, wall: def.kind === 'wall-item' };
     this.positionInst(fake);
     this.paintGrid();
-    this.events.placingChanged(this.placingState());
+    const st = this.placingState()!;
+    const sig = `${st.surface}|${st.x}|${st.y}|${st.rot}|${st.fit.ok ? '' : st.fit.reason}`;
+    if (sig !== this.placingSig) { this.placingSig = sig; this.events.placingChanged(st); }
   }
+  private placingSig = '';
 
   rotatePlacing() {
     if (!this.placing || ITEM_BY_KEY[this.placing.item]?.kind === 'wall-item') return;
@@ -882,6 +974,7 @@ export class HomeScene {
   private dragPlacingTo(sx: number, sy: number) {
     const pl = this.placing;
     if (!pl) return;
+    const was = `${pl.surface}|${pl.x}|${pl.y}`;
     const def = ITEM_BY_KEY[pl.item]!;
     this.setRay(sx, sy);
     if (def.kind === 'wall-item') {
@@ -910,7 +1003,8 @@ export class HomeScene {
       pl.x = Math.max(0, Math.min(this.L.w - W, Math.round(hit.x + ORIGIN.w / 2 - W / 2)));
       pl.y = Math.max(0, Math.min(this.L.d - D, Math.round(hit.z + ORIGIN.d / 2 - D / 2)));
     }
-    this.updatePlacing();
+    // A finger moves many times per tile; only a new tile needs a new fit check and grid.
+    if (`${pl.surface}|${pl.x}|${pl.y}` !== was) this.updatePlacing();
   }
 
   // ---------- Input ----------
@@ -1054,7 +1148,7 @@ export class HomeScene {
         }
         if (i.pending) {
           const o = 0.62 + 0.3 * (0.5 + 0.5 * Math.sin(t * 7));
-          i.root.traverse((n) => { const m = (n as THREE.Mesh).material; if (m) for (const mm of Array.isArray(m) ? m : [m]) mm.opacity = o * (mm.userData.prev?.opacity ?? 1); });
+          for (const mm of i.mats ??= materialsOf(i.root)) mm.opacity = o * (mm.userData.prev?.opacity ?? 1);
         }
       }
       for (const i of this.leaving) {
@@ -1069,7 +1163,7 @@ export class HomeScene {
       this.dayTimer += dt;
       if (this.dayTimer > 20) { this.dayTimer = 0; this.applyDaylight(); }
       this.wallTimer += dt;
-      if (this.wallTimer > 30) { this.wallTimer = 0; this.refreshWalls(); }
+      if (this.wallTimer > 30) { this.wallTimer = 0; this.refreshWalls(true); }
       if (!this.partnerOnline && this.partner.lying) {
         this.zzzT += dt;
         if (this.zzzT > 1.6) { this.zzzT = 0; this.fx.spawn('zzz', this.partner.head(), { spread: 0.1 }); }
@@ -1124,6 +1218,7 @@ export class HomeScene {
 
   destroy() {
     this.r.stop();
+    for (const m of this.warmKeep) m.dispose();
     for (const id of [...this.items.keys()]) this.removeInst(id);
     this.room.dispose();
     this.me.dispose();

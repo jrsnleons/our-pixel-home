@@ -13,8 +13,8 @@ import type { ThemeKey } from '../data/themes';
 import { AreaScene, type AreaEvents } from './area';
 import { Actor } from './actor';
 import type { AvatarLook } from './art/avatar';
-import { buildFloorItem, type ItemArt } from './art/furniture';
-import { buildWallItem } from './art/wall';
+import { itemArt } from './art/bake';
+import type { ItemArt } from './art/furniture';
 import type { Daylight } from './daylight';
 import { RoomShell } from './room';
 import { npcLook } from './town';
@@ -76,7 +76,7 @@ export class InteriorScene extends AreaScene {
       let lamp: { art: ItemArt; strength: number } | null = null;
       const rot = p.rot ?? 0;
       if (def.kind === 'wall-item') {
-        const art = buildWallItem(p.item, this.theme);
+        const art = itemArt(p.item, this.theme);
         root.add(art.group);
         const [w] = def.size ?? [1, 1];
         if ((p.surface ?? 'back') === 'back') root.position.set(-HALF + p.x, 1 + p.y, -HALF + 0.01);
@@ -84,7 +84,7 @@ export class InteriorScene extends AreaScene {
         art.refresh?.({});
         for (const g of art.glow ?? []) this.glowing.push(g);
       } else {
-        const art = buildFloorItem(p.item, this.theme);
+        const art = itemArt(p.item, this.theme);
         root.add(art.group);
         const [w, d] = def.size ?? [1, 1];
         const [W, D] = footprint(def, rot);
@@ -170,7 +170,7 @@ export class InteriorScene extends AreaScene {
       const approach = { x: t.x, y: t.y + 1 };
       if (e.kind === 'item') {
         const def = ITEM_BY_KEY[e.key];
-        const art = def.kind === 'wall-item' ? buildWallItem(e.key, this.theme) : buildFloorItem(e.key, this.theme);
+        const art = itemArt(e.key, this.theme);
         const model = new THREE.Group();
         model.add(art.group);
         const box = new THREE.Box3().setFromObject(model);

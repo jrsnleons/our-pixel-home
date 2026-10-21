@@ -4,8 +4,9 @@
 import { useSignalEffect } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import { setSfx } from '../audio/audio';
-import { backend, coupleId, markFeedSeen, merge, partnerLastSeen, partnerOnline, phase, prefs, route, setPrefs, snap, suggestedName, toasts } from '../state/store';
+import { backend, coupleId, markFeedSeen, merge, partnerLastSeen, partnerOnline, phase, prefs, route, setPrefs, signOut, snap, suggestedName, toasts } from '../state/store';
 import { Icon } from './kit';
+import { LoadingScreen } from './overlays/Loading';
 import { Home, deliverLive } from './screens/Home';
 import { Boot, Intro, MakeProfile, Pair, SignIn } from './screens/Onboarding';
 import { applyTheme } from './theme';
@@ -53,6 +54,7 @@ export function App() {
         : p === 'pair' ? <Pair onDone={() => { markFeedSeen(); phase.value = 'home'; }} />
         : p === 'archived' ? <Archived />
         : snap.value?.couple ? <Home /> : null}
+      <LoadingScreen />
       <div class="toasts" aria-live="polite">
         {toasts.value.map((t) => <div class={`toast ${t.kind}`}>{t.kind === 'coins' ? <Icon name="coin" size="s" /> : t.kind === 'love' ? <Icon name="heart" size="s" /> : null}{t.text}</div>)}
       </div>
@@ -68,7 +70,7 @@ function Archived() {
         <h2 style={{ fontWeight: 'normal', margin: 0 }}>This home is archived</h2>
         <p class="small" style={{ margin: 0 }}>You can bring it back for free within 30 days of archiving it.</p>
         <button class="btn" onClick={async () => { const { act } = await import('../state/store'); const ok = await act('restore', {}); if (ok) location.reload(); }}>Restore our home</button>
-        <button class="btn ghost small" onClick={async () => { await backend.signOut(); location.reload(); }}>Sign out</button>
+        <button class="btn ghost small" onClick={async () => { await signOut(); location.reload(); }}>Sign out</button>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { mix, ramp, shade } from '../core/color';
 import { ROOM } from '../core/grid';
 import { floorTiles, ORIGIN, roomAt, STUDIO, type FloorPlan, type RoomDef } from '../core/layout';
 import type { Theme } from '../data/themes';
+import { bake } from './art/bake';
 import { cbox, dispose, flat, pbox } from './art/kit';
 import { solid, wood } from './art/paint';
 import { bevel, canvas, disc, frame as frameRect, px, PPU, rng, texture, woodFace, type Ctx } from './art/pixel';
@@ -60,6 +61,7 @@ export class RoomShell {
     slab.position.set(cx, -0.25, cz);
     slab.receiveShadow = true;
     slab.userData.floor = true;
+    slab.userData.live = true; // restyled
     g.add(slab);
 
     // Walls. They never cast shadows so the sun can reach the room through the "missing" walls.
@@ -87,6 +89,7 @@ export class RoomShell {
         const paper = new THREE.MeshLambertMaterial();
         this.wallSegs.push({ mat: paper, side, len: st.len, room: st.room });
         const pm = new THREE.Mesh(new THREE.PlaneGeometry(st.len, WALL_H - ROOM.wainscot), paper);
+        pm.userData.live = true;
         // Offset of this stretch's middle from the middle of the whole wall.
         const mid = st.from + st.len / 2 - len / 2;
         if (side === 'back') pm.position.set(cx + mid, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, -HALF + 0.002);
@@ -168,6 +171,8 @@ export class RoomShell {
 
     for (let i = 0; i < 26; i++) this.rain.push({ x: Math.random() * 32, y: Math.random() * 28, s: 0.7 + Math.random() * 0.6 });
     this.setStyle(style);
+    // Trim, frames, sill and partitions never change: draw them as one or two meshes.
+    bake(g);
   }
 
   private paintTex(w: number, h: number, p: (c: Ctx, w: number, h: number) => void, repeat?: [number, number]) {
@@ -213,6 +218,7 @@ export class RoomShell {
       m.rotation.x = -Math.PI / 2;
       m.position.set(-HALF + r.x + r.w / 2, 0.004, -HALF + r.y + r.d / 2);
       m.receiveShadow = true;
+      m.userData.live = true;
       this.group.add(m);
       this.roomFloors.push({ mat, room: r });
     }
@@ -252,6 +258,7 @@ export class RoomShell {
 
   private buildCurtains(on: boolean) {
     for (const c of [...this.curtainGroup.children]) { this.curtainGroup.remove(c); dispose(c); }
+    this.curtainGroup.userData.live = true;
     const T = this.T;
     const rodY = 3.92;
     this.curtainGroup.add(cbox(-0.85, rodY, -HALF + 0.08, 2.7, 0.06, 0.06, shade(T.wood, -0.2)));
@@ -295,6 +302,7 @@ export class RoomShell {
     door.rotation.y = Math.PI / 2;
     door.position.set(-HALF + 0.02, (h - 0.15) / 2, (z0 + z1) / 2);
     door.receiveShadow = true;
+    door.userData.live = true; // tapped to go out
     g.add(door);
     this.doorPicks.push(door);
     const trim = shade(T.wall.trim, -0.05);
@@ -313,6 +321,7 @@ export class RoomShell {
     mat.rotation.x = -Math.PI / 2;
     mat.position.set(-HALF + 0.42, 0.012, (z0 + z1) / 2);
     mat.receiveShadow = true;
+    mat.userData.live = true;
     g.add(mat);
     this.doorPicks.push(mat);
   }
