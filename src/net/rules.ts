@@ -2,6 +2,7 @@
 // them in the browser and the `api` edge function runs the very same code on the server
 // (via src/net/dispatch.ts); tests/rules.test.ts pins the behaviour.
 
+import { TREAT_BY_KEY } from '../data/treats';
 import { applyMove, emptyBoard, outcome, type GameKind as BoardKind } from '../core/boardgames';
 import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '../core/grid';
 import { layoutOf, nextHome } from '../core/layout';
@@ -239,6 +240,14 @@ export function moveHome(c: Ctx, id: string) {
   spend(c, next.price, `home:${next.id}`);
   c.w.couple.home = next.id;
   event(c, 'decor', { moved: next.name });
+}
+
+/** A treat from the bakery cart. With a partner it lands in their feed as something shared. */
+export function treat(c: Ctx, key: string) {
+  const t = TREAT_BY_KEY[key];
+  if (!t) throw new RuleError('The cart doesn’t have that.');
+  spend(c, t.price, `treat:${t.key}`);
+  if (partnerOf(c)) event(c, 'treat', { treat: t.key });
 }
 
 export function setProfile(c: Ctx, patch: { name?: string; city?: string | null; tz?: string; tourDone?: boolean }) {

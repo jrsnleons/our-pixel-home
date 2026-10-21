@@ -26,6 +26,7 @@ export function dispatch<K extends RpcName>(c: R.Ctx, name: K, args: Rpcs[K], op
     case 'move': { const p = a as Rpcs['move']; R.move(c, str(p.pid), spot(p)); return { coins: 0 }; }
     case 'store': R.store(c, str((a as Rpcs['store']).pid)); return { coins: 0 };
     case 'set_style': R.setStyle(c, obj((a as Rpcs['set_style']).style)); return { coins: 0 };
+    case 'treat': R.treat(c, str((a as Rpcs['treat']).treat)); return { coins: 0 };
     case 'move_home': R.moveHome(c, str((a as Rpcs['move_home']).home)); return { coins: 0 };
     case 'set_look': R.setLook(c, obj((a as Rpcs['set_look']).look)); return { coins: 0 };
     case 'buy_clothes': { const p = a as Rpcs['buy_clothes']; R.buyClothes(c, str(p.key), int(p.color)); return { coins: 0 }; }

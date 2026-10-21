@@ -207,3 +207,15 @@ describe('looks and milestones', () => {
     expect(w.profiles.ana.tourDone).toBe(true);
   });
 });
+
+describe('bakery cart', () => {
+  it('spends coins and tells the partner what was bought', () => {
+    const { w, ana } = setup();
+    R.treat(ana(), 'cocoa');
+    expect(w.couple.coins).toBe(275);
+    expect(w.events.at(-1)).toMatchObject({ kind: 'treat', actor: 'ana', payload: { treat: 'cocoa' } });
+    expect(() => R.treat(ana(), 'steak')).toThrow('doesn’t have');
+    w.couple.coins = 5;
+    expect(() => R.treat(ana(), 'cookie')).toThrow('Not enough coins');
+  });
+});

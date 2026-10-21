@@ -99,7 +99,7 @@ export interface Devotion {
   createdAt: string;
 }
 
-export type EventKind = 'heart' | 'interaction' | 'nudge' | 'buy' | 'note' | 'prayer' | 'prayed' | 'answered' | 'devotion' | 'game' | 'shift' | 'quest' | 'reward' | 'decor' | 'joined' | 'milestone' | 'outfit';
+export type EventKind = 'heart' | 'interaction' | 'nudge' | 'buy' | 'note' | 'prayer' | 'prayed' | 'answered' | 'devotion' | 'game' | 'shift' | 'quest' | 'reward' | 'decor' | 'joined' | 'milestone' | 'outfit' | 'treat';
 
 export interface FeedEvent {
   id: string;

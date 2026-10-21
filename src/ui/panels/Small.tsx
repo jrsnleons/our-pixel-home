@@ -1,6 +1,7 @@
 // Smaller sheets: starter quests, the "while you were away" feed, the together-since step,
 // milestone celebrations, and the per-item sheets (photo frame, calendar, clock, verse art, globe).
 
+import { TREAT_BY_KEY } from '../../data/treats';
 import { PIECE_BY_KEY } from '../../data/clothes';
 import { useState } from 'preact/hooks';
 import { sfx } from '../../audio/audio';
@@ -57,6 +58,7 @@ export function describe(e: FeedEvent): string {
     case 'shift': return `worked ${p.together ? 'a shift together' : 'a shift'} at ${JOBS[isJob(p.job) ? p.job : 'cafe'].place} (+${p.pay})`;
     case 'quest': return 'finished a starter quest';
     case 'decor': return p.moved ? `moved you into the ${p.moved}` : 'redecorated';
+    case 'treat': return `bought you ${(TREAT_BY_KEY[String(p.treat)]?.name ?? 'a treat').toLowerCase()} from the bakery cart`;
     case 'joined': return 'moved in';
     case 'milestone': return `celebrated ${p.label} with you`;
     default: return 'was here';

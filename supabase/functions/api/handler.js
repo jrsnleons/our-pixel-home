@@ -460,6 +460,14 @@ function jobXp(c, job2) {
   return job2 === "cafe" ? c.cafeXp : c.jobXp?.[job2] ?? 0;
 }
 
+// src/data/treats.ts
+var TREATS = [
+  { key: "cookie", name: "Chocolate chip cookie", price: 15, blurb: "Still a little warm." },
+  { key: "cocoa", name: "Hot cocoa", price: 25, blurb: "With a tiny marshmallow heart." },
+  { key: "roll", name: "Cinnamon roll", price: 30, blurb: "Big enough to split." }
+];
+var TREAT_BY_KEY = Object.fromEntries(TREATS.map((t) => [t.key, t]));
+
 // src/core/boardgames.ts
 var DIMS = {
   connect4: { cols: 7, rows: 6, win: 4 },
@@ -1208,6 +1216,12 @@ function moveHome(c, id) {
   c.w.couple.home = next.id;
   event(c, "decor", { moved: next.name });
 }
+function treat(c, key2) {
+  const t = TREAT_BY_KEY[key2];
+  if (!t) throw new RuleError("The cart doesn\u2019t have that.");
+  spend(c, t.price, `treat:${t.key}`);
+  if (partnerOf(c)) event(c, "treat", { treat: t.key });
+}
 function setProfile(c, patch) {
   const me = c.w.profiles[c.me];
   if (patch.name !== void 0) {
@@ -1691,6 +1705,9 @@ function dispatch(c, name, args, opts) {
     case "set_style":
       setStyle(c, obj(a.style));
       return { coins: 0 };
+    case "treat":
+      treat(c, str(a.treat));
+      return { coins: 0 };
     case "move_home":
       moveHome(c, str(a.home));
       return { coins: 0 };
@@ -1889,6 +1906,7 @@ var ACTIONS = /* @__PURE__ */ new Set([
   "store",
   "set_style",
   "move_home",
+  "treat",
   "set_look",
   "buy_clothes",
   "save_look",

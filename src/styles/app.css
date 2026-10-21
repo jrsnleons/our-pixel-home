@@ -85,6 +85,9 @@ textarea.input { resize: none; line-height: 1.4; font-family: var(--read-font), 
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; font-size: .8em; background: var(--soft);
   box-shadow: 0 calc(-1 * var(--u)) 0 0 var(--outline), 0 var(--u) 0 0 var(--outline), calc(-1 * var(--u)) 0 0 0 var(--outline), var(--u) 0 0 0 var(--outline); }
 
+button.chip { border: 0; color: var(--ink); font-family: inherit; cursor: pointer; padding: 5px 9px; }
+.chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+
 .ico { width: 24px; height: 24px; image-rendering: pixelated; flex: none; display: block; }
 .ico.s { width: 16px; height: 16px; }
 .ico.l { width: 36px; height: 36px; }

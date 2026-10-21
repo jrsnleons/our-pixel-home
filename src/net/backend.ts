@@ -14,6 +14,7 @@ export interface Rpcs {
   store: { pid: string };
   set_style: { style: RoomStyleRow };
   move_home: { home: string };
+  treat: { treat: string };
   set_look: { look: AvatarLook };
   buy_clothes: { key: string; color: number };
   save_look: { index: number; wear: Wear | null };

@@ -321,3 +321,26 @@ INTERIORS.realty = {
   ],
   keeper: { name: 'Ms. Hale', line: 'Every home on this street started as somebody’s first one. Take a look.', tile: { x: 3, y: 4 }, look: 5, facing: '+x' },
 };
+
+INTERIORS.chapel = {
+  id: 'chapel', w: 9, d: 7, floor: 'fl_parquet', floorTint: '#B08C68', wallpaper: 'wp_plain', wallTint: '#EFE7D8',
+  props: [
+    { id: 'lectern', item: 'bible_stand', x: 4, y: 2 },
+    { item: 'light_floor', x: 2, y: 2 },
+    { item: 'light_floor', x: 6, y: 2 },
+    { item: 'rug_runner', x: 3, y: 5 },
+    { id: 'pewA', item: 'seat_loveseat', x: 5, y: 4 },
+    { item: 'seat_loveseat', x: 2, y: 4 },
+    { item: 'seat_loveseat', x: 2, y: 6 },
+    { item: 'seat_loveseat', x: 5, y: 6 },
+    { item: 'plant_fern', x: 8, y: 6 },
+    { item: 'wall_cross', x: 8, y: 1, surface: 'back' },
+    { item: 'wall_scripture', x: 0, y: 1, surface: 'back' },
+    { item: 'wall_lights', x: 5, y: 2, surface: 'back' },
+  ],
+  spots: [
+    { id: 'chapel-lectern', kind: 'quiet', label: 'Quiet time', approach: { x: 4, y: 3 }, prop: 'lectern' },
+    { id: 'chapel-pew', kind: 'quiet', label: 'Pray for each other', approach: { x: 6, y: 5 }, prop: 'pewA' },
+  ],
+  keeper: { name: 'Sister Ruth', line: 'Come in and sit a while. There’s no hurry here.', tile: { x: 1, y: 3 }, look: 2, facing: '+x' },
+};

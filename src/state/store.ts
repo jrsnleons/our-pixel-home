@@ -10,7 +10,7 @@ import { ActionError, type Backend, type RpcName, type Rpcs } from '../net/backe
 import type { FeedEvent, Patch, Snapshot } from '../net/types';
 
 export type Phase = 'boot' | 'signin' | 'profile' | 'pair' | 'home' | 'archived';
-export type Sheet = 'shop' | 'work' | 'decorate' | 'notes' | 'me' | 'quests' | 'feed' | 'wardrobe' | 'realty' | null;
+export type Sheet = 'shop' | 'work' | 'decorate' | 'notes' | 'me' | 'quests' | 'feed' | 'wardrobe' | 'realty' | 'bakery' | null;
 
 export interface Prefs {
   theme: ThemeKey;

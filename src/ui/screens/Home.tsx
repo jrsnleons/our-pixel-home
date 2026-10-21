@@ -28,6 +28,7 @@ import { InteractionWheel } from '../overlays/Wheel';
 import { Decorate } from '../panels/Decorate';
 import { Notes, type NotesTab } from '../panels/Notes';
 import { Me } from '../panels/Me';
+import { Bakery } from '../panels/Bakery';
 import { Realty } from '../panels/Realty';
 import { Shop } from '../panels/Shop';
 import { boutiqueEntries, furnitureEntries } from '../shopstock';
@@ -88,7 +89,7 @@ export function Home() {
       placingChanged: (s) => placingRef.current?.(s),
     }, layoutOf(s0.couple!.home));
     sceneRef = sc;
-    if (import.meta.env.DEV) (window as unknown as { __oph: unknown }).__oph = { sc, areas: () => areas.current, go: (to: AreaId, from?: string) => goRef.current?.(to, from) };
+    if (import.meta.env.DEV) (window as unknown as { __oph: unknown }).__oph = { sc, act, areas: () => areas.current, go: (to: AreaId, from?: string) => goRef.current?.(to, from) };
     sc.sync(s0.placements);
     sc.partner.group.visible = !!s0.partner;
     // Back where we were when the app was last open (or the middle of the room the first time).
@@ -105,7 +106,7 @@ export function Home() {
     setScene(sc);
     // Reopen what was open: a solo shift in progress first, otherwise the last sheet.
     if (savedShift()) sheet.value = 'work';
-    else if (last?.sheet && last.sheet !== 'decorate' && last.sheet !== 'shop' && last.sheet !== 'work' && last.sheet !== 'realty') sheet.value = last.sheet;
+    else if (last?.sheet && last.sheet !== 'decorate' && last.sheet !== 'shop' && last.sheet !== 'work' && last.sheet !== 'realty' && last.sheet !== 'bakery') sheet.value = last.sheet;
     if (last?.notesTab) setNotesTab(last.notesTab as NotesTab);
     // Music needs a tap before the phone lets it play.
     if (last?.music) {
@@ -209,11 +210,19 @@ export function Home() {
       if (h.kind === 'item') { shopCtx.value = { shop: 'maple', focus: h.id.slice(5) }; sheet.value = 'shop'; return; }
       if (h.kind === 'shop') { shopCtx.value = { shop: id === 'boutique' ? 'boutique' : 'maple' }; sheet.value = 'shop'; return; }
       if (h.kind === 'realty') { sheet.value = 'realty'; return; }
+      if (h.kind === 'quiet') { setNotesTab(h.id === 'chapel-pew' ? 'prayer' : 'quiet'); sheet.value = 'notes'; return; }
       if (h.kind === 'work') { const sp = id ? INTERIORS[id]?.spots.find((q) => q.id === h.id) : null; if (id && sp) { setLobby({ place: PLACE_BY_ID[id], job: sp.job }); sheet.value = 'work'; } return; }
       const p = PLACE_BY_ID[h.id];
       if (!p) return;
       if (p.kind === 'home') { goRef.current?.('home'); return; }
-      if (INTERIORS[p.id] && (p.kind === 'job' || p.kind === 'shop' || p.kind === 'realty')) {
+      if (p.id === 'bakery') { sheet.value = 'bakery'; return; }
+      if (p.id === 'park') {
+        const together = !!snap.value?.partner && partnerArea.value === 'town';
+        here()?.fx.spawn('heart', here()!.me.head(), { count: together ? 4 : 2, spread: 0.5 });
+        toast(together ? `You and ${snap.value!.partner!.name} sit on the bench for a minute.` : `A quiet bench by the fountain.${snap.value?.partner ? ` ${snap.value.partner.name} would like it here.` : ''}`, 'love');
+        return;
+      }
+      if (INTERIORS[p.id]) {
         const open = !p.jobs || p.jobs.some((j) => !jobLock(snap.value?.me, j));
         if (!open) {
           const lock = jobLock(snap.value?.me, p.jobs![0])!;
@@ -528,6 +537,7 @@ export function Home() {
       )}
 
       {sheet.value === 'shop' && <Shop onClose={() => open(null)} />}
+      {sheet.value === 'bakery' && <Bakery onClose={() => open(null)} />}
       {sheet.value === 'realty' && <Realty onClose={() => open(null)} />}
       {sheet.value === 'work' && <Work onClose={() => { open(null); setLobby(null); }} joinShift={takeWorkJoin()} title={lobby ? lobby.place.name : 'Work'} jobs={lobby ? lobby.place.jobs ?? null : null} first={lobby?.job} />}
       {sheet.value === 'decorate' && scene && <Decorate scene={scene} onClose={() => open(null)} bind={(d, p) => { decorTapRef.current = d; placingRef.current = p; }} />}

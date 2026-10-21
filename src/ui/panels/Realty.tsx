@@ -13,7 +13,7 @@ const TILE = 9;
 function Plan({ L }: { L: HomeLayout }) {
   const w = L.w * TILE, h = L.d * TILE;
   return (
-    <svg viewBox={`-2 -2 ${w + 4} ${h + 4}`} width="100%" role="img" aria-label={`${L.name} floor plan`} style={{ maxHeight: '110px' }}>
+    <svg viewBox={`-2 -2 ${w + 4} ${h + 4}`} width={`${Math.max(30, (L.w / 20) * 100)}%`} role="img" aria-label={`${L.name} floor plan`} style={{ maxHeight: '110px' }}>
       {L.rooms.map((r, i) => (
         <g>
           <rect x={r.x * TILE} y={r.y * TILE} width={r.w * TILE} height={r.d * TILE} fill={r.id === 'balcony' || r.id === 'porch' ? 'var(--soft)' : 'var(--paper, #fff6e4)'} stroke="var(--outline)" stroke-width="1.5" />
@@ -48,7 +48,7 @@ export function Realty({ onClose }: { onClose: () => void }) {
       <div class="col" style={{ gap: '10px' }}>
         {HOME_ORDER.map((id) => {
           const L = layoutOf(id);
-          const here = id === now;
+          const here = id === layoutOf(now).id;
           const done = HOME_ORDER.indexOf(id) < HOME_ORDER.indexOf(layoutOf(now).id);
           const isNext = next?.id === id;
           return (
