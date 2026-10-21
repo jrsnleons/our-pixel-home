@@ -225,7 +225,7 @@ export class TownScene extends AreaScene {
     this.scene.add(group);
 
     const hotspot: Hotspot = {
-      id: p.id, kind: p.kind, label: p.name,
+      id: p.id, kind: 'door', label: p.name,
       approach: p.door,
       at: new THREE.Vector3(wx(p.door.x) + 0.5, Hh + 0.7, wz(p.y) + D),
     };

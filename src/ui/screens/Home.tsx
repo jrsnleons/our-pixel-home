@@ -217,10 +217,11 @@ export function Home() {
       const id = insideOf(area.value);
       if (h.kind === 'exit') { goRef.current?.('town', id ?? undefined); return; }
       if (h.kind === 'item') { shopCtx.value = { shop: 'maple', focus: h.id.slice(5) }; sheet.value = 'shop'; return; }
-      if (h.kind === 'shop') { shopCtx.value = { shop: id === 'boutique' ? 'boutique' : 'maple' }; sheet.value = 'shop'; return; }
-      if (h.kind === 'realty') { sheet.value = 'realty'; return; }
-      if (h.kind === 'quiet') { setNotesTab(h.id === 'chapel-pew' ? 'prayer' : 'quiet'); sheet.value = 'notes'; return; }
-      if (h.kind === 'work') { const sp = id ? INTERIORS[id]?.spots.find((q) => q.id === h.id) : null; if (id && sp) { setLobby({ place: PLACE_BY_ID[id], job: sp.job }); sheet.value = 'work'; } return; }
+      // Counters, desks and pews only exist inside; outside, every hotspot is a front door.
+      if (h.kind === 'shop' && id) { shopCtx.value = { shop: id === 'boutique' ? 'boutique' : 'maple' }; sheet.value = 'shop'; return; }
+      if (h.kind === 'realty' && id) { sheet.value = 'realty'; return; }
+      if (h.kind === 'quiet' && id) { setNotesTab(h.id === 'chapel-pew' ? 'prayer' : 'quiet'); sheet.value = 'notes'; return; }
+      if (h.kind === 'work' && id) { const sp = id ? INTERIORS[id]?.spots.find((q) => q.id === h.id) : null; if (id && sp) { setLobby({ place: PLACE_BY_ID[id], job: sp.job }); sheet.value = 'work'; } return; }
       const p = PLACE_BY_ID[h.id];
       if (!p) return;
       if (p.kind === 'home') { goRef.current?.('home'); return; }
