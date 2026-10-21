@@ -28,6 +28,7 @@ import { InteractionWheel } from '../overlays/Wheel';
 import { Decorate } from '../panels/Decorate';
 import { Notes, type NotesTab } from '../panels/Notes';
 import { Me } from '../panels/Me';
+import { Realty } from '../panels/Realty';
 import { Shop } from '../panels/Shop';
 import { boutiqueEntries, furnitureEntries } from '../shopstock';
 import { savedShift, Work } from '../panels/Work';
@@ -48,6 +49,7 @@ export function Home() {
   const host = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<HomeScene | null>(null);
   const [bubble, setBubble] = useState<Bubble>(null);
+  const [whole, setWhole] = useState(false);
   const [wheel, setWheel] = useState(false);
   const [game, setGame] = useState<{ id: string | null; kind: GameKind } | null>(null);
   const [invite, setInvite] = useState<{ kind: GameKind | 'shift'; ref?: string; job?: JobKey } | null>(null);
@@ -74,7 +76,7 @@ export function Home() {
     host.current!.appendChild(canvas);
     const T = THEMES[prefs.value.theme];
     const st = s0.couple!.style;
-    const sc = new HomeScene(canvas, prefs.value.theme, { wallpaper: st.wallpaper, wallTint: st.wallTint || T.wall.tint, floor: st.floor, floorTint: st.floorTint, curtains: s0.unlocks.includes('up_curtains') }, { me: s0.me.look, partner: s0.partner?.look ?? s0.me.look }, {
+    const sc = new HomeScene(canvas, prefs.value.theme, { wallpaper: st.wallpaper, wallTint: st.wallTint || T.wall.tint, floor: st.floor, floorTint: st.floorTint, rooms: st.rooms, curtains: s0.unlocks.includes('up_curtains') }, { me: s0.me.look, partner: s0.partner?.look ?? s0.me.look }, {
       tapFurniture: (p, at) => { sfx('tap'); setBubble({ kind: 'furniture', p, at }); },
       tapPartner: (at) => { if (!snap.value?.partner) return; sfx('tap'); setBubble({ kind: 'partner', at }); },
       tapMe: (at) => { sfx('tap'); setBubble({ kind: 'me', at }); },
@@ -103,7 +105,7 @@ export function Home() {
     setScene(sc);
     // Reopen what was open: a solo shift in progress first, otherwise the last sheet.
     if (savedShift()) sheet.value = 'work';
-    else if (last?.sheet && last.sheet !== 'decorate' && last.sheet !== 'shop' && last.sheet !== 'work') sheet.value = last.sheet;
+    else if (last?.sheet && last.sheet !== 'decorate' && last.sheet !== 'shop' && last.sheet !== 'work' && last.sheet !== 'realty') sheet.value = last.sheet;
     if (last?.notesTab) setNotesTab(last.notesTab as NotesTab);
     // Music needs a tap before the phone lets it play.
     if (last?.music) {
@@ -206,11 +208,12 @@ export function Home() {
       if (h.kind === 'exit') { goRef.current?.('town', id ?? undefined); return; }
       if (h.kind === 'item') { shopCtx.value = { shop: 'maple', focus: h.id.slice(5) }; sheet.value = 'shop'; return; }
       if (h.kind === 'shop') { shopCtx.value = { shop: id === 'boutique' ? 'boutique' : 'maple' }; sheet.value = 'shop'; return; }
+      if (h.kind === 'realty') { sheet.value = 'realty'; return; }
       if (h.kind === 'work') { const sp = id ? INTERIORS[id]?.spots.find((q) => q.id === h.id) : null; if (id && sp) { setLobby({ place: PLACE_BY_ID[id], job: sp.job }); sheet.value = 'work'; } return; }
       const p = PLACE_BY_ID[h.id];
       if (!p) return;
       if (p.kind === 'home') { goRef.current?.('home'); return; }
-      if (INTERIORS[p.id] && (p.kind === 'job' || p.kind === 'shop')) {
+      if (INTERIORS[p.id] && (p.kind === 'job' || p.kind === 'shop' || p.kind === 'realty')) {
         const open = !p.jobs || p.jobs.some((j) => !jobLock(snap.value?.me, j));
         if (!open) {
           const lock = jobLock(snap.value?.me, p.jobs![0])!;
@@ -468,6 +471,12 @@ export function Home() {
         </div>
       )}
 
+      {area.value === 'home' && sheet.value !== 'decorate' && scene && scene.layout.rooms.length > 1 && (
+        <button class="pill wholebtn" aria-pressed={whole} onClick={() => { sfx('tap'); scene.setOverview(!whole); setWhole(!whole); }}>
+          <Icon name="box" size="s" /><span>{whole ? 'Follow us' : 'Whole home'}</span>
+        </button>
+      )}
+
       {bubble?.kind === 'furniture' && scene && (
         <FurnitureBubble p={bubble.p} at={bubble.at} scene={scene} music={music}
           onClose={() => setBubble(null)}
@@ -519,6 +528,7 @@ export function Home() {
       )}
 
       {sheet.value === 'shop' && <Shop onClose={() => open(null)} />}
+      {sheet.value === 'realty' && <Realty onClose={() => open(null)} />}
       {sheet.value === 'work' && <Work onClose={() => { open(null); setLobby(null); }} joinShift={takeWorkJoin()} title={lobby ? lobby.place.name : 'Work'} jobs={lobby ? lobby.place.jobs ?? null : null} first={lobby?.job} />}
       {sheet.value === 'decorate' && scene && <Decorate scene={scene} onClose={() => open(null)} bind={(d, p) => { decorTapRef.current = d; placingRef.current = p; }} />}
       {sheet.value === 'notes' && <Notes onClose={() => open(null)} tab={notesTab} setTab={setNotesTab} />}

@@ -56,7 +56,7 @@ export function describe(e: FeedEvent): string {
     case 'game': return `finished a game${p.winner === e.actor ? ' and won' : ''}`;
     case 'shift': return `worked ${p.together ? 'a shift together' : 'a shift'} at ${JOBS[isJob(p.job) ? p.job : 'cafe'].place} (+${p.pay})`;
     case 'quest': return 'finished a starter quest';
-    case 'decor': return 'redecorated';
+    case 'decor': return p.moved ? `moved you into the ${p.moved}` : 'redecorated';
     case 'joined': return 'moved in';
     case 'milestone': return `celebrated ${p.label} with you`;
     default: return 'was here';

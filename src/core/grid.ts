@@ -4,7 +4,7 @@
 // wainscot.
 
 import { footprint, ITEM_BY_KEY, type ItemDef } from '../data/catalog';
-import { floorTiles, ORIGIN, STUDIO, type FloorPlan, type HomeLayout } from './layout';
+import { crossable, floorTiles, ORIGIN, roomAt, STUDIO, type FloorPlan, type HomeLayout } from './layout';
 
 /** Wall dimensions shared by every home. w and d are the studio, which anchors the world frame. */
 export const ROOM = { w: ORIGIN.w, d: ORIGIN.d, wallRows: 3, wallHeight: 4, wainscot: 1 } as const;
@@ -105,6 +105,10 @@ export function canPlace(
   for (const c of cells) {
     if (!inFloor(c, L) || taken.has(key(c.x, c.y)) || people.has(key(c.x, c.y))) bad.push(c);
   }
+  if (!bad.length && cells.length > 1) {
+    const home = roomAt(L, cells[0]);
+    if (cells.some((c) => roomAt(L, c) !== home)) return { ok: false, reason: 'A piece has to stand inside one room.', bad: cells };
+  }
   if (bad.length) {
     const outside = bad.some((c) => !inFloor(c, L));
     return { ok: false, reason: outside ? 'It doesn’t fit inside the room there.' : 'Something is already there.', bad };
@@ -159,7 +163,7 @@ export function allFreeTilesConnected(blocked: Set<string>, L: FloorPlan = STUDI
 export function neighbors(t: Tile, L: FloorPlan = STUDIO): Tile[] {
   return [
     { x: t.x + 1, y: t.y }, { x: t.x - 1, y: t.y }, { x: t.x, y: t.y + 1 }, { x: t.x, y: t.y - 1 },
-  ].filter((n) => inFloor(n, L));
+  ].filter((n) => inFloor(n, L) && crossable(L, t, n));
 }
 
 /** World position of a floor tile's center. Anchored on the studio: tile (0, 0) is at (-3, -3) in every home. */

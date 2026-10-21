@@ -3,6 +3,7 @@ import { HomeScene } from '../engine/scene';
 import { THEMES, type ThemeKey } from '../data/themes';
 import { DEFAULT_LOOK } from '../engine/art/avatar';
 import type { Placement } from '../core/grid';
+import { layoutOf } from '../core/layout';
 
 const q = new URLSearchParams(location.search);
 const theme = (q.get('theme') ?? 'honey') as ThemeKey;
@@ -25,14 +26,16 @@ const ROOMS: Record<string, Placement[]> = {
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const noop = () => {};
 const T = THEMES[theme];
-const scene = new HomeScene(canvas, theme, { wallpaper: q.get('wp') ?? (room === 'starter' ? 'wp_plain' : 'wp_flowers'), wallTint: T.wall.tint, floor: q.get('fl') ?? (room === 'starter' ? 'fl_plywood' : 'fl_pine'), floorTint: null, curtains: room !== 'starter' },
+const scene = new HomeScene(canvas, theme, { wallpaper: q.get('wp') ?? (room === 'starter' ? 'wp_plain' : 'wp_flowers'), wallTint: T.wall.tint, floor: q.get('fl') ?? (room === 'starter' ? 'fl_plywood' : 'fl_pine'), floorTint: null, curtains: room !== 'starter', rooms: q.has('home') ? { bedroom: { wallpaper: 'wp_hearts', floor: 'fl_plywood' }, bath: { wallpaper: 'wp_stars', floorTint: '#7FA0B8' } } : undefined },
   { me: { ...DEFAULT_LOOK, hair: 'short', hairColor: 1, wear: { top: 'hoodie:0', bottom: 'joggers:0', shoes: 'sneakers:0' } }, partner: { ...DEFAULT_LOOK, hair: 'long', hairColor: 3, skin: 2, wear: { top: 'knit:0', bottom: 'jeans:0', shoes: 'boots:0', hat: 'flower:0' } } },
-  { tapFurniture: noop, tapPartner: noop, tapMe: noop, tapEmpty: noop, tapDoor: noop, walked: noop, settled: noop, decorTap: noop, placingChanged: noop });
+  { tapFurniture: noop, tapPartner: noop, tapMe: noop, tapEmpty: noop, tapDoor: noop, walked: noop, settled: noop, decorTap: noop, placingChanged: noop }, layoutOf(q.get('home') ?? 'studio'));
+if (q.has('overview')) scene.setOverview(true);
+if (q.has('deco')) scene.setDecorating(true);
 if (q.has('zoom')) { scene.setZoom(Number(q.get('zoom'))); scene.r.pan.set(Number(q.get('px') ?? 0), Number(q.get('py') ?? 0)); }
 if (q.has('hour')) scene.setHour(Number(q.get('hour')));
 scene.sync(ROOMS[room] ?? ROOMS.full);
 scene.setWallContext({ partnerOffsetMin: -480, myLabel: 'MNL', partnerLabel: 'LDN', daysToVisit: 23, notes: [{ text: 'miss u', kind: 'note' }, { text: 'call 9pm', kind: 'note' }, { text: 'job interview', kind: 'prayer' }], verse: { text: 'Be still, and know that I am God.', ref: 'Psalm 46:10' } });
-scene.placeActors({ x: 2, y: 4 }, { x: 4, y: 4 });
+scene.placeActors({ x: Number(q.get('mx') ?? 2), y: Number(q.get('my') ?? 4) }, { x: 4, y: 4 });
 scene.setPartnerOnline(q.get('partner') !== 'off');
 const fit = () => scene.resize(innerWidth, innerHeight);
 addEventListener('resize', fit); fit();

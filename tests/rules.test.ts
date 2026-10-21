@@ -57,6 +57,36 @@ describe('store and inventory', () => {
   });
 });
 
+describe('homes', () => {
+  it('moves up the ladder one home at a time and keeps everything where it is', () => {
+    const { w, ana } = setup();
+    const before = JSON.stringify(w.placements);
+    expect(() => R.moveHome(ana(), 'one_bed')).toThrow('coins');
+    w.couple.coins = 120_000;
+    expect(() => R.moveHome(ana(), 'condo')).toThrow('next home');
+    R.moveHome(ana(), 'one_bed');
+    expect(w.couple.home).toBe('one_bed');
+    expect(w.couple.coins).toBe(115_000);
+    expect(JSON.stringify(w.placements)).toBe(before);
+    expect(() => R.moveHome(ana(), 'one_bed')).toThrow('next home');
+    R.moveHome(ana(), 'two_bed'); R.moveHome(ana(), 'condo'); R.moveHome(ana(), 'house');
+    expect(w.couple.coins).toBe(10_000);
+    expect(() => R.moveHome(ana(), 'house')).toThrow('biggest');
+  });
+  it('lets each room keep its own wallpaper and floor', () => {
+    const { w, ana } = setup();
+    w.couple.coins = 100_000;
+    R.buy(ana(weekWith(['fl_pine'])), 'fl_pine');
+    expect(() => R.setStyle(ana(), { ...w.couple.style, rooms: { bedroom: { floor: 'fl_pine' } } })).not.toThrow();
+    expect(w.couple.style.rooms).toBeUndefined(); // the studio has no bedroom
+    R.moveHome(ana(), 'one_bed');
+    R.setStyle(ana(), { ...w.couple.style, rooms: { bedroom: { floor: 'fl_pine', wallTint: '#AABBCC' }, nope: { floor: 'fl_pine' } } });
+    expect(w.couple.style.rooms).toEqual({ bedroom: { floor: 'fl_pine', wallTint: '#AABBCC' } });
+    expect(w.couple.style.floor).toBe('fl_plywood');
+    expect(() => R.setStyle(ana(), { ...w.couple.style, rooms: { bedroom: { floor: 'fl_marble' } } })).toThrow('Buy that style');
+  });
+});
+
 describe('daily limits', () => {
   it('pays hearts 5 times a day per person', () => {
     const { w, ana, ben } = setup();

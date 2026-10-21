@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mix, ramp, shade } from '../core/color';
 import { ROOM } from '../core/grid';
-import { ORIGIN, STUDIO, type FloorPlan } from '../core/layout';
+import { floorTiles, ORIGIN, roomAt, STUDIO, type FloorPlan, type RoomDef } from '../core/layout';
 import type { Theme } from '../data/themes';
 import { cbox, dispose, flat, pbox } from './art/kit';
 import { solid, wood } from './art/paint';
@@ -12,7 +12,15 @@ import { bevel, canvas, disc, frame as frameRect, px, PPU, rng, texture, woodFac
 import { paintFloor, paintSlab, paintWainscot, paintWallpaper } from './art/surfaces';
 import type { Daylight } from './daylight';
 
-export interface RoomStyle { wallpaper: string; wallTint: string; floor: string; floorTint: string | null; curtains: boolean }
+export interface RoomStyle {
+  wallpaper: string; wallTint: string; floor: string; floorTint: string | null; curtains: boolean;
+  /** Per-room differences (rooms of a bigger home), by room id. An empty wallTint means the theme's color. */
+  rooms?: Record<string, { wallpaper?: string; wallTint?: string; floor?: string; floorTint?: string | null }>;
+}
+
+/** A partition between rooms: as tall as the wainscot, with a cap. */
+const PART_H = 1.0;
+const PART_T = 0.16;
 
 const HALF = ORIGIN.w / 2; // 3.5: the back wall sits at z = -HALF and the left wall at x = -HALF in every home
 const WALL_H = 4.3;
@@ -30,7 +38,8 @@ export class RoomShell {
   readonly hemi: THREE.HemisphereLight;
   readonly sun: THREE.DirectionalLight;
   private floorMat: THREE.MeshLambertMaterial;
-  private wallMats: THREE.MeshLambertMaterial[] = [];
+  private wallSegs: { mat: THREE.MeshLambertMaterial; side: 'back' | 'left'; len: number; room: RoomDef | null }[] = [];
+  private roomFloors: { mat: THREE.MeshLambertMaterial; room: RoomDef }[] = [];
   private curtainGroup = new THREE.Group();
   private T: Theme;
   private day: Daylight | null = null;
@@ -62,28 +71,41 @@ export class RoomShell {
     left.position.set(-HALF - WALL_T / 2, WALL_H / 2, cz);
     for (const w of [back, left]) { w.receiveShadow = true; w.userData.wall = w === back ? 'back' : 'left'; g.add(w); }
 
-    // Wallpaper and wainscot faces (separate so they can be restyled cheaply).
+    // Wallpaper and wainscot faces (separate so they can be restyled cheaply). Every room that
+    // touches a wall gets its own stretch of wallpaper.
+    const multi = L.rooms.length > 1;
     for (const side of ['back', 'left'] as const) {
-      const paper = new THREE.MeshLambertMaterial();
-      this.wallMats.push(paper);
       const len = side === 'back' ? L.w : L.d;
-      const pm = new THREE.Mesh(new THREE.PlaneGeometry(len, WALL_H - ROOM.wainscot), paper);
+      const stretches = multi
+        ? L.rooms.filter((r) => (side === 'back' ? r.y === 0 : r.x === 0)).map((r) => ({ room: r, from: side === 'back' ? r.x : r.y, len: side === 'back' ? r.w : r.d })).sort((p, q) => p.from - q.from)
+        : [{ room: null as RoomDef | null, from: 0, len }];
       const wm = new THREE.Mesh(new THREE.PlaneGeometry(len, ROOM.wainscot), new THREE.MeshLambertMaterial({ map: this.paintTex(len * PPU, 16, (c, w) => paintWainscot(c, w, T.wall.trim, T.outline)) }));
       // Crown molding along the top.
       const crown = new THREE.Mesh(new THREE.BoxGeometry(len, 0.14, 0.1), [flat(T.wall.trim), flat(T.wall.trim), flat(shade(T.wall.trim, 0.12)), flat(T.wall.trim), new THREE.MeshLambertMaterial({ map: this.paintTex(len * PPU, 3, (c, w, h) => { px(c, shade(T.wall.trim, 0.1), 0, 0, w, h); px(c, shade(T.wall.trim, -0.15), 0, h - 1, w, 1); for (let x = 0; x < w; x += 4) px(c, shade(T.wall.trim, -0.05), x, 1); }) }), flat(T.wall.trim)]);
+      const papers: THREE.Mesh[] = [];
+      for (const st of stretches) {
+        const paper = new THREE.MeshLambertMaterial();
+        this.wallSegs.push({ mat: paper, side, len: st.len, room: st.room });
+        const pm = new THREE.Mesh(new THREE.PlaneGeometry(st.len, WALL_H - ROOM.wainscot), paper);
+        // Offset of this stretch's middle from the middle of the whole wall.
+        const mid = st.from + st.len / 2 - len / 2;
+        if (side === 'back') pm.position.set(cx + mid, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, -HALF + 0.002);
+        else { pm.rotation.y = Math.PI / 2; pm.position.set(-HALF + 0.002, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, cz + mid); }
+        papers.push(pm);
+      }
       if (side === 'back') {
-        pm.position.set(cx, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, -HALF + 0.002);
         wm.position.set(cx, ROOM.wainscot / 2, -HALF + 0.004);
         crown.position.set(cx, WALL_H - 0.07, -HALF + 0.05);
       } else {
-        for (const m of [pm, wm, crown]) m.rotation.y = Math.PI / 2;
-        pm.position.set(-HALF + 0.002, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, cz);
+        for (const m of [wm, crown]) m.rotation.y = Math.PI / 2;
         wm.position.set(-HALF + 0.004, ROOM.wainscot / 2, cz);
         crown.position.set(-HALF + 0.05, WALL_H - 0.07, cz);
       }
-      for (const m of [pm, wm]) { m.receiveShadow = true; m.userData.wall = side; }
-      g.add(pm, wm, crown);
+      for (const m of [...papers, wm]) { m.receiveShadow = true; m.userData.wall = side; }
+      g.add(...papers, wm, crown);
     }
+
+    if (multi) { this.buildRoomFloors(); this.buildPartitions(); }
 
     // Window: frame, sill, live sky, mullions. Back wall, x -0.5..1.5, y 2..4.
     const [sc, sg] = canvas(32, 28);
@@ -155,16 +177,77 @@ export class RoomShell {
   }
 
   setStyle(style: RoomStyle) {
+    const T = this.T;
+    const eff = (room: RoomDef | null) => {
+      const o = room ? style.rooms?.[room.id] : undefined;
+      return {
+        wallpaper: o?.wallpaper ?? style.wallpaper,
+        wallTint: o?.wallTint !== undefined ? o.wallTint || T.wall.tint : style.wallTint,
+        floor: o?.floor ?? style.floor,
+        floorTint: o?.floorTint !== undefined ? o.floorTint : style.floorTint,
+      };
+    };
     this.floorMat.map?.dispose();
     this.floorMat.map = this.paintTex(64, 64, (c) => paintFloor(c, style.floor, style.floorTint), [this.L.w / 4, this.L.d / 4]);
     this.floorMat.needsUpdate = true;
-    const key = style.wallpaper;
-    this.wallMats.forEach((m, i) => {
-      m.map?.dispose();
-      m.map = this.paintTex(32, 32, (c) => paintWallpaper(c, key, style.wallTint, this.T.accent), [(i === 0 ? this.L.w : this.L.d) / 2, (WALL_H - ROOM.wainscot) / 2]);
-      m.needsUpdate = true;
-    });
+    for (const f of this.roomFloors) {
+      const e = eff(f.room);
+      f.mat.map?.dispose();
+      f.mat.map = this.paintTex(64, 64, (c) => paintFloor(c, e.floor, e.floorTint), [f.room.w / 4, f.room.d / 4]);
+      f.mat.needsUpdate = true;
+    }
+    for (const seg of this.wallSegs) {
+      const e = eff(seg.room);
+      seg.mat.map?.dispose();
+      seg.mat.map = this.paintTex(32, 32, (c) => paintWallpaper(c, e.wallpaper, e.wallTint, T.accent), [seg.len / 2, (WALL_H - ROOM.wainscot) / 2]);
+      seg.mat.needsUpdate = true;
+    }
     this.buildCurtains(style.curtains);
+  }
+
+  /** Each room of a bigger home lays its own floor over the slab. */
+  private buildRoomFloors() {
+    for (const r of this.L.rooms) {
+      const mat = new THREE.MeshLambertMaterial();
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(-HALF + r.x + r.w / 2, 0.004, -HALF + r.y + r.d / 2);
+      m.receiveShadow = true;
+      this.group.add(m);
+      this.roomFloors.push({ mat, room: r });
+    }
+  }
+
+  /** Half-height partitions between rooms, with a gap wherever the layout has a doorway. */
+  private buildPartitions() {
+    const L = this.L;
+    const open = new Set((L.openings ?? []).map((o) => `${o.x},${o.y},${o.dir}`));
+    const tiles = floorTiles(L);
+    // Edges between neighbouring tiles of different rooms: 'x' edges are vertical lines (right of tile x), 'y' edges horizontal.
+    const runs: { dir: 'x' | 'y'; line: number; from: number; to: number }[] = [];
+    const add = (dir: 'x' | 'y', line: number, at: number) => {
+      const prev = runs.find((r) => r.dir === dir && r.line === line && r.to === at);
+      if (prev) prev.to = at + 1; else runs.push({ dir, line, from: at, to: at + 1 });
+    };
+    for (const k of tiles) {
+      const [x, y] = k.split(',').map(Number);
+      const here = roomAt(L, { x, y });
+      const right = roomAt(L, { x: x + 1, y });
+      const below = roomAt(L, { x, y: y + 1 });
+      if (right && right !== here && !open.has(`${x},${y},x`)) add('x', x + 1, y);
+      if (below && below !== here && !open.has(`${x},${y},y`)) add('y', y + 1, x);
+    }
+    const T = this.T;
+    const cap = solid(shade(T.wall.trim, -0.2));
+    for (const r of runs) {
+      const len = r.to - r.from;
+      const faces = { sides: (c: Ctx, w: number) => paintWainscot(c, w, T.wall.trim, T.outline), top: cap };
+      const m = r.dir === 'x'
+        ? pbox(-HALF + r.line - PART_T / 2, 0, -HALF + r.from, PART_T, PART_H, len, faces)
+        : pbox(-HALF + r.from, 0, -HALF + r.line - PART_T / 2, len, PART_H, PART_T, faces);
+      m.userData.partition = true;
+      this.group.add(m);
+    }
   }
 
   private buildCurtains(on: boolean) {

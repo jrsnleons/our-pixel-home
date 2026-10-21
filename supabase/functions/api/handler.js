@@ -24,9 +24,9 @@ function bagPick(pool, n, start, seed) {
   const raw = (cycle) => shuffled(pool, seeded(seed + cycle * 7919));
   const orders = /* @__PURE__ */ new Map();
   const order = (cycle) => {
-    let o = orders.get(cycle);
-    if (o) return o;
-    o = raw(cycle);
+    let o2 = orders.get(cycle);
+    if (o2) return o2;
+    o2 = raw(cycle);
     if (pool.length >= take * 3) {
       const gap = take * 2;
       const old = raw(cycle - 1);
@@ -35,21 +35,21 @@ function bagPick(pool, n, start, seed) {
         return q < 0 || old.length - q + p >= gap;
       };
       for (let guard = 0; guard < pool.length; guard++) {
-        const p = o.findIndex((x2, i) => i < gap && !away(x2, i));
+        const p = o2.findIndex((x2, i) => i < gap && !away(x2, i));
         if (p < 0) break;
-        const [x] = o.splice(p, 1);
-        o.splice(Math.floor(o.length / 2), 0, x);
+        const [x] = o2.splice(p, 1);
+        o2.splice(Math.floor(o2.length / 2), 0, x);
       }
     }
-    orders.set(cycle, o);
-    return o;
+    orders.set(cycle, o2);
+    return o2;
   };
   const out = [];
   for (let i = start; i < start + take; i++) {
-    const o = order(Math.floor(i / pool.length));
+    const o2 = order(Math.floor(i / pool.length));
     let k = i % pool.length;
-    while (out.includes(o[k])) k = (k + 1) % pool.length;
-    out.push(o[k]);
+    while (out.includes(o2[k])) k = (k + 1) % pool.length;
+    out.push(o2[k]);
   }
   return out;
 }
@@ -622,13 +622,86 @@ var STUDIO = {
   w: 7,
   d: 7,
   rooms: [{ id: "main", name: "Studio", x: 0, y: 0, w: 7, d: 7 }],
+  openings: [],
   fixedWall: {
     back: [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
     left: [{ x: 4, y: 0 }, { x: 5, y: 0 }, { x: 4, y: 1 }, { x: 5, y: 1 }]
   },
   door: { x: 0, y: 5 }
 };
-var LAYOUTS = { studio: STUDIO };
+var FIXED = STUDIO.fixedWall;
+var o = (x, y, dir) => ({ x, y, dir });
+var ONE_BED = {
+  id: "one_bed",
+  name: "1-bedroom",
+  blurb: "A living room and a bedroom with a doorway between.",
+  price: 5e3,
+  w: 12,
+  d: 7,
+  rooms: [
+    { id: "living", name: "Living room", x: 0, y: 0, w: 7, d: 7 },
+    { id: "bedroom", name: "Bedroom", x: 7, y: 0, w: 5, d: 7 }
+  ],
+  openings: [o(6, 3, "x"), o(6, 4, "x")],
+  fixedWall: FIXED,
+  door: STUDIO.door
+};
+var TWO_BED = {
+  id: "two_bed",
+  name: "2-bedroom",
+  blurb: "Two bedrooms and a bathroom around the living room.",
+  price: 15e3,
+  w: 12,
+  d: 10,
+  rooms: [
+    { id: "living", name: "Living room", x: 0, y: 0, w: 7, d: 7 },
+    { id: "bedroom", name: "Bedroom", x: 7, y: 0, w: 5, d: 7 },
+    { id: "bedroom2", name: "Second bedroom", x: 0, y: 7, w: 7, d: 3 },
+    { id: "bath", name: "Bathroom", x: 7, y: 7, w: 5, d: 3 }
+  ],
+  openings: [o(6, 3, "x"), o(6, 4, "x"), o(2, 6, "y"), o(3, 6, "y"), o(9, 6, "y"), o(6, 8, "x")],
+  fixedWall: FIXED,
+  door: STUDIO.door
+};
+var CONDO = {
+  id: "condo",
+  name: "Condo",
+  blurb: "A study off the bedroom and a balcony with a view.",
+  price: 3e4,
+  w: 16,
+  d: 10,
+  rooms: [
+    ...TWO_BED.rooms,
+    { id: "study", name: "Study", x: 12, y: 0, w: 4, d: 6 },
+    { id: "balcony", name: "Balcony", x: 12, y: 6, w: 4, d: 4 }
+  ],
+  openings: [...TWO_BED.openings, o(11, 2, "x"), o(11, 3, "x"), o(13, 5, "y"), o(14, 5, "y")],
+  fixedWall: FIXED,
+  door: STUDIO.door
+};
+var HOUSE = {
+  id: "house",
+  name: "House",
+  blurb: "A dining room, a kitchen and a porch to sit on.",
+  price: 6e4,
+  w: 20,
+  d: 11,
+  rooms: [
+    ...CONDO.rooms,
+    { id: "dining", name: "Dining room", x: 16, y: 0, w: 4, d: 5 },
+    { id: "kitchen", name: "Kitchen", x: 16, y: 5, w: 4, d: 5 },
+    { id: "porch", name: "Porch", x: 0, y: 10, w: 20, d: 1 }
+  ],
+  openings: [...CONDO.openings, o(15, 2, "x"), o(15, 3, "x"), o(17, 4, "y"), o(18, 4, "y"), o(15, 7, "x"), o(15, 8, "x"), o(3, 9, "y"), o(4, 9, "y")],
+  fixedWall: FIXED,
+  door: STUDIO.door
+};
+var LAYOUTS = { studio: STUDIO, one_bed: ONE_BED, two_bed: TWO_BED, condo: CONDO, house: HOUSE };
+var HOME_ORDER = ["studio", "one_bed", "two_bed", "condo", "house"];
+function nextHome(id) {
+  const i = HOME_ORDER.indexOf(id ?? "studio");
+  return i >= 0 && i < HOME_ORDER.length - 1 ? LAYOUTS[HOME_ORDER[i + 1]] : null;
+}
 function layoutOf(id) {
   return LAYOUTS[id ?? "studio"] ?? STUDIO;
 }
@@ -641,6 +714,18 @@ function floorTiles(L) {
     floors.set(L, s);
   }
   return s;
+}
+function roomAt(L, t) {
+  return L.rooms.find((r) => t.x >= r.x && t.y >= r.y && t.x < r.x + r.w && t.y < r.y + r.d) ?? null;
+}
+function crossable(L, a, b) {
+  const ra = roomAt(L, a), rb = roomAt(L, b);
+  if (!ra || !rb || ra === rb) return true;
+  const ops = L.openings;
+  if (!ops?.length) return false;
+  const [p, q] = a.x < b.x || a.y < b.y ? [a, b] : [b, a];
+  const dir = p.x !== q.x ? "x" : "y";
+  return ops.some((op) => op.dir === dir && op.x === p.x && op.y === p.y);
 }
 
 // src/core/grid.ts
@@ -705,6 +790,10 @@ function canPlace(def2, spot2, placements, opts = {}) {
   for (const c of cells) {
     if (!inFloor(c, L) || taken.has(key(c.x, c.y)) || people.has(key(c.x, c.y))) bad.push(c);
   }
+  if (!bad.length && cells.length > 1) {
+    const home = roomAt(L, cells[0]);
+    if (cells.some((c) => roomAt(L, c) !== home)) return { ok: false, reason: "A piece has to stand inside one room.", bad: cells };
+  }
   if (bad.length) {
     const outside = bad.some((c) => !inFloor(c, L));
     return { ok: false, reason: outside ? "It doesn\u2019t fit inside the room there." : "Something is already there.", bad };
@@ -746,7 +835,7 @@ function neighbors(t, L = STUDIO) {
     { x: t.x - 1, y: t.y },
     { x: t.x, y: t.y + 1 },
     { x: t.x, y: t.y - 1 }
-  ].filter((n) => inFloor(n, L));
+  ].filter((n) => inFloor(n, L) && crossable(L, t, n));
 }
 
 // src/data/stock.ts
@@ -761,8 +850,8 @@ var FEATURE_POOL = ITEMS.filter((d) => sold(d) && d.kind !== "style" && d.kind !
 var WALLPAPER_POOL = ITEMS.filter((d) => d.category === "wallpaper" && sold(d)).sort(byKey);
 var FLOORS = ITEMS.filter((d) => d.category === "floor" && sold(d)).sort((a, b) => (a.tier ?? 0) - (b.tier ?? 0));
 var FEATURE_CYCLE = Math.ceil(FEATURE_POOL.length / FEATURED);
-function ownedKeys(o) {
-  return /* @__PURE__ */ new Set([...o.unlocks, ...o.inventory.map((r) => r.item), ...o.placements.map((p) => p.item)]);
+function ownedKeys(o2) {
+  return /* @__PURE__ */ new Set([...o2.unlocks, ...o2.inventory.map((r) => r.item), ...o2.placements.map((p) => p.item)]);
 }
 function shelves(now, owned) {
   const week = weekIndex(now);
@@ -1086,11 +1175,38 @@ function store(c, pid) {
   if (stackRow) stackRow.qty++;
   else c.w.inventory.push({ id: c.id(), item: p.item, qty: 1, data: p.data ?? null });
 }
+var TINT = /^#[0-9a-fA-F]{6}$/;
 function setStyle(c, style) {
-  for (const k of [style.wallpaper, style.floor]) if (!c.w.unlocks.includes(k)) throw new RuleError("Buy that style in the store first.");
-  if (!/^(#[0-9a-fA-F]{6})?$/.test(style.wallTint) || !(style.floorTint == null || /^#[0-9a-fA-F]{6}$/.test(style.floorTint))) throw new RuleError("Pick a swatch.");
-  c.w.couple.style = { wallpaper: style.wallpaper, wallTint: style.wallTint, floor: style.floor, floorTint: style.floorTint ?? null };
+  const L = layoutOf(c.w.couple.home);
+  const own = (k) => {
+    if (k && !c.w.unlocks.includes(k)) throw new RuleError("Buy that style at Maple Furnishings first.");
+  };
+  own(style.wallpaper);
+  own(style.floor);
+  if (!/^(#[0-9a-fA-F]{6})?$/.test(style.wallTint) || !(style.floorTint == null || TINT.test(style.floorTint))) throw new RuleError("Pick a swatch.");
+  const rooms = {};
+  for (const [id, o2] of Object.entries(style.rooms ?? {})) {
+    if (!L.rooms.some((r) => r.id === id)) continue;
+    own(o2.wallpaper);
+    own(o2.floor);
+    if (o2.wallTint != null && !/^(#[0-9a-fA-F]{6})?$/.test(o2.wallTint) || o2.floorTint != null && !TINT.test(o2.floorTint)) throw new RuleError("Pick a swatch.");
+    const clean = {};
+    if (o2.wallpaper) clean.wallpaper = o2.wallpaper;
+    if (o2.wallTint != null) clean.wallTint = o2.wallTint;
+    if (o2.floor) clean.floor = o2.floor;
+    if (o2.floorTint != null) clean.floorTint = o2.floorTint;
+    if (Object.keys(clean).length) rooms[id] = clean;
+  }
+  c.w.couple.style = { wallpaper: style.wallpaper, wallTint: style.wallTint, floor: style.floor, floorTint: style.floorTint ?? null, ...Object.keys(rooms).length ? { rooms } : {} };
   event(c, "decor", {});
+}
+function moveHome(c, id) {
+  const next = nextHome(c.w.couple.home);
+  if (!next) throw new RuleError("You already live in the biggest home on Maple Street.");
+  if (id !== next.id) throw new RuleError(`The next home for you is the ${next.name}.`);
+  spend(c, next.price, `home:${next.id}`);
+  c.w.couple.home = next.id;
+  event(c, "decor", { moved: next.name });
 }
 function setProfile(c, patch) {
   const me = c.w.profiles[c.me];
@@ -1420,15 +1536,15 @@ function gameMove(c, gameId, mv) {
   if (g.turn !== c.me) throw new RuleError("Wait for your turn.");
   const player = g.p1 === c.me ? 1 : 2;
   if (applyMove(g.kind, g.board, mv, player) < 0) throw new RuleError("You can\u2019t play there.");
-  const o = outcome(g.kind, g.board);
+  const o2 = outcome(g.kind, g.board);
   let coins = 0;
-  if (o === "draw") {
+  if (o2 === "draw") {
     g.status = "draw";
     coins = finishGame(c, g, null);
-  } else if (o) {
+  } else if (o2) {
     g.status = "won";
-    g.winCells = o.cells;
-    coins = finishGame(c, g, o.winner === 1 ? g.p1 : g.p2);
+    g.winCells = o2.cells;
+    coins = finishGame(c, g, o2.winner === 1 ? g.p1 : g.p2);
   } else g.turn = g.p1 === c.me ? g.p2 : g.p1;
   g.updatedAt = c.now.toISOString();
   return { game: g, coins };
@@ -1574,6 +1690,9 @@ function dispatch(c, name, args, opts) {
       return { coins: 0 };
     case "set_style":
       setStyle(c, obj(a.style));
+      return { coins: 0 };
+    case "move_home":
+      moveHome(c, str(a.home));
       return { coins: 0 };
     case "set_look":
       setLook(c, obj(a.look));
@@ -1769,6 +1888,7 @@ var ACTIONS = /* @__PURE__ */ new Set([
   "move",
   "store",
   "set_style",
+  "move_home",
   "set_look",
   "buy_clothes",
   "save_look",

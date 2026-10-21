@@ -9,7 +9,8 @@ import { ITEM_BY_KEY, ITEMS } from '../../data/catalog';
 import { THEMES } from '../../data/themes';
 import type { HomeScene, PlacingState } from '../../engine/scene';
 import { slotsUsed } from '../../net/rules';
-import type { RoomStyleRow } from '../../net/types';
+import type { RoomStyleOverride, RoomStyleRow } from '../../net/types';
+import { layoutOf } from '../../core/layout';
 import { act, actOptimistic, prefs, snap, toast } from '../../state/store';
 import { Icon, Tabs } from '../kit';
 import { ItemThumb } from '../ItemThumb';
@@ -178,15 +179,34 @@ function StylePicker({ kind }: { kind: 'wallpaper' | 'floor' }) {
   const style = s.couple!.style;
   const owned = new Set(s.unlocks);
   const all = ITEMS.filter((i) => i.category === kind);
-  const set = async (patch: Partial<RoomStyleRow>) => {
+  const rooms = layoutOf(s.couple!.home).rooms;
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const over = roomId ? style.rooms?.[roomId] : undefined;
+  const save = async (next: RoomStyleRow) => {
     sfx('tap');
-    const ok = await act('set_style', { style: { ...style, ...patch } });
+    const ok = await act('set_style', { style: next });
     if (!ok) sfx('error');
   };
-  const current = kind === 'wallpaper' ? style.wallpaper : style.floor;
-  const tint = kind === 'wallpaper' ? style.wallTint : style.floorTint;
+  const set = (patch: Partial<RoomStyleOverride>) => {
+    if (!roomId) return save({ ...style, ...patch } as RoomStyleRow);
+    return save({ ...style, rooms: { ...style.rooms, [roomId]: { ...over, ...patch } } });
+  };
+  const reset = () => {
+    const rest = { ...style.rooms };
+    delete rest[roomId!];
+    return save({ ...style, rooms: Object.keys(rest).length ? rest : undefined });
+  };
+  const current = kind === 'wallpaper' ? (over?.wallpaper ?? style.wallpaper) : (over?.floor ?? style.floor);
+  const tint = kind === 'wallpaper' ? (over?.wallTint !== undefined ? over.wallTint : style.wallTint) : (over?.floorTint !== undefined ? over.floorTint : style.floorTint);
   return (
     <div class="col" style={{ gap: '8px', maxHeight: '200px', overflowY: 'auto', padding: '2px 4px' }}>
+      {rooms.length > 1 && (
+        <div class="row" style={{ gap: '4px', flexWrap: 'wrap' }}>
+          <button class="chip" aria-pressed={roomId === null} onClick={() => setRoomId(null)}>Whole home</button>
+          {rooms.map((r) => <button class="chip" aria-pressed={roomId === r.id} onClick={() => setRoomId(r.id)}>{r.name}{style.rooms?.[r.id] ? ' •' : ''}</button>)}
+          {over && <button class="chip" onClick={() => void reset()}>Use the home style</button>}
+        </div>
+      )}
       <div class="slots" style={{ maxHeight: 'none', gridTemplateColumns: 'repeat(5, 1fr)' }}>
         {all.map((i) => {
           const have = owned.has(i.key);

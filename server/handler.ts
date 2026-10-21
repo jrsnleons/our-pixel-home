@@ -24,7 +24,7 @@ export interface Reply { status: number; body: unknown }
 const ONLINE_WINDOW = 150;
 
 const ACTIONS = new Set<RpcName>([
-  'buy', 'place', 'move', 'store', 'set_style', 'set_look', 'buy_clothes', 'save_look', 'gift_look', 'answer_gift', 'set_profile', 'set_couple', 'placement_data', 'water',
+  'buy', 'place', 'move', 'store', 'set_style', 'move_home', 'set_look', 'buy_clothes', 'save_look', 'gift_look', 'answer_gift', 'set_profile', 'set_couple', 'placement_data', 'water',
   'claim_daily', 'together_tick', 'heart', 'interaction', 'nudge', 'notebook_create', 'page_write', 'page_edit',
   'page_delete', 'prayer_add', 'prayer_pray', 'prayer_answer', 'prayer_delete', 'devotion', 'quest_claim',
   'game_start', 'game_move', 'game_resign', 'draw_word', 'draw_guess', 'draw_skip', 'shift_start', 'shift_finish',

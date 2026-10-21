@@ -32,11 +32,21 @@ export interface Profile {
   god?: boolean;
 }
 
+/** What one room does differently from the rest of the home. */
+export interface RoomStyleOverride {
+  wallpaper?: string;
+  wallTint?: string;
+  floor?: string;
+  floorTint?: string | null;
+}
+
 export interface RoomStyleRow {
   wallpaper: string;
   wallTint: string;
   floor: string;
   floorTint: string | null;
+  /** Per-room overrides by room id (only in homes with more than one room). */
+  rooms?: Record<string, RoomStyleOverride>;
 }
 
 export interface Couple {

@@ -13,6 +13,7 @@ export interface Rpcs {
   move: { pid: string; surface: Surface; x: number; y: number; rot: number };
   store: { pid: string };
   set_style: { style: RoomStyleRow };
+  move_home: { home: string };
   set_look: { look: AvatarLook };
   buy_clothes: { key: string; color: number };
   save_look: { index: number; wear: Wear | null };

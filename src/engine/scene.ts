@@ -92,6 +92,8 @@ export class HomeScene {
   private dragging = false;
   /** False while another scene (the town, a shop) is on screen. */
   private live = true;
+  private overview = false;
+  private camFit = 10.6;
 
   constructor(canvas: HTMLCanvasElement, themeKey: ThemeKey, style: RoomStyle, looks: { me: AvatarLook; partner: AvatarLook }, readonly events: SceneEvents, layout: HomeLayout = STUDIO) {
     this.r = new Renderer(canvas);
@@ -145,9 +147,47 @@ export class HomeScene {
     for (const id of [...this.items.keys()]) this.removeInst(id);
     this.placements = [];
     this.sync(all);
+    this.applyView(true);
   }
 
   get layout(): HomeLayout { return this.L; }
+
+  /** Anything bigger than the studio is too wide for the screen: the camera follows you instead. */
+  private get big() { return this.L.w * this.L.d > STUDIO.w * STUDIO.d; }
+
+  get wholeHome() { return this.big && (this.overview || this.decorating); }
+
+  /** Pull back to see the whole home (decorating does this on its own). */
+  setOverview(on: boolean) {
+    this.overview = on;
+    this.applyView();
+  }
+
+  private overviewFit() { return Math.max(10.6, (this.L.w + this.L.d) * 0.757 + 1.6); }
+
+  private applyView(snap = false) {
+    const fit = this.wholeHome ? this.overviewFit() : 10.6;
+    if (fit !== this.camFit) { this.camFit = fit; this.r.setView(0.66, fit); }
+    if (!this.big) { this.r.target.set(0, 1.05, 0.25); return; }
+    if (snap) this.followCam(1);
+  }
+
+  /** Ease the camera toward whoever you are playing as, kept inside the home. */
+  private followCam(k: number) {
+    const L = this.L;
+    const HALF = ORIGIN.w / 2;
+    let tx = -HALF + L.w / 2, tz = -HALF + L.d / 2;
+    if (!this.wholeHome) {
+      const m = 3.2;
+      const lo = (n: number) => -HALF + Math.min(m, n / 2), hi = (n: number) => -HALF + Math.max(n - m, n / 2);
+      tx = Math.max(lo(L.w), Math.min(hi(L.w), this.me.pos.x));
+      tz = Math.max(lo(L.d), Math.min(hi(L.d), this.me.pos.z));
+    }
+    const t = this.r.target;
+    t.x += (tx - t.x) * k;
+    t.z += (tz + 0.25 - t.z) * k;
+    t.y = 1.05;
+  }
 
   setStyle(style: RoomStyle) {
     this.style = style;
@@ -729,6 +769,7 @@ export class HomeScene {
 
   setDecorating(on: boolean) {
     this.decorating = on;
+    this.applyView();
     if (!on) { this.cancelPlacing(); this.selected = null; }
     this.gridFloor.visible = on;
     this.paintGrid();
@@ -930,7 +971,7 @@ export class HomeScene {
 
   private panBy(dx: number, dy: number) {
     const k = 0.012 / this.r.zoom;
-    const lim = (this.r.zoom - 1) * 3.2;
+    const lim = (this.r.zoom - 1) * 3.2 * (this.wholeHome ? 1.8 : 1);
     this.r.pan.x = Math.max(-lim, Math.min(lim, this.r.pan.x - dx * k));
     this.r.pan.y = Math.max(-lim, Math.min(lim, this.r.pan.y + dy * k));
   }
@@ -999,6 +1040,7 @@ export class HomeScene {
       this.me.update(dt);
       this.partner.update(dt);
       this.fx.update(dt);
+      if (this.big && this.live) this.followCam(Math.min(1, dt * 4));
       this.room.tick(t, dt, this.r.reduceMotion);
       for (const i of this.items.values()) {
         i.art.tick?.(t);
@@ -1054,6 +1096,8 @@ export class HomeScene {
     this.r.pan.set(0, 0);
     this.r.setShadowLight(this.room.sun);
     this.r.target.set(0, 1.05, 0.25);
+    this.camFit = 10.6;
+    this.applyView(true);
     const m = this.theme.mood;
     this.r.setMood(m.bloom, m.grade, m.gradeAmount, m.backdrop);
     this.applyDaylight(true);

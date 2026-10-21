@@ -301,3 +301,23 @@ INTERIORS.boutique = {
   keeper: { name: 'Priya', line: 'New rack every Monday. Everything fits you better than you think.', tile: { x: 2, y: 4 }, look: 3, facing: '+x' },
   displays: row(1, 1, 8),
 };
+
+INTERIORS.realty = {
+  id: 'realty', w: 9, d: 7, floor: 'fl_parquet', floorTint: '#C8A27A', wallpaper: 'wp_stripes', wallTint: '#EBD0C0',
+  props: [
+    { id: 'agentDesk', item: 'desk', x: 4, y: 3 },
+    { item: 'seat_stool', x: 4, y: 2 },
+    { item: 'seat_sofa', x: 5, y: 5 },
+    { item: 'rug_round', x: 2, y: 3 },
+    { item: 'plant_monstera', x: 0, y: 6 },
+    { item: 'light_floor', x: 8, y: 4 },
+    { item: 'store_bookshelf', x: 7, y: 2 },
+    { item: 'wall_poster', x: 1, y: 1, surface: 'back' },
+    { item: 'wall_lights', x: 3, y: 1, surface: 'back' },
+    { item: 'wall_shelf', x: 5, y: 1, surface: 'back' },
+  ],
+  spots: [
+    { id: 'realty-desk', kind: 'realty', label: 'See the homes', approach: { x: 4, y: 4 }, prop: 'agentDesk' },
+  ],
+  keeper: { name: 'Ms. Hale', line: 'Every home on this street started as somebody’s first one. Take a look.', tile: { x: 3, y: 4 }, look: 5, facing: '+x' },
+};

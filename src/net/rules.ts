@@ -4,7 +4,7 @@
 
 import { applyMove, emptyBoard, outcome, type GameKind as BoardKind } from '../core/boardgames';
 import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '../core/grid';
-import { layoutOf } from '../core/layout';
+import { layoutOf, nextHome } from '../core/layout';
 import { ITEM_BY_KEY, SLOT_UPGRADE, STARTER_COINS, STARTER_PLACEMENTS, STARTER_SLOTS, type ItemDef } from '../data/catalog';
 import { DAILY_LIMITS, QUESTS, REWARDS, SHIFT, jobLevel, milestone, shiftPayout } from '../data/economy';
 import { JOB_KEYS, JOBS, jobLock, jobXp, type JobKey } from '../data/jobs';
@@ -13,7 +13,7 @@ import { cleanWear, colorPrice, onSale, ownedClothes, parseWorn, PIECES, wearOf,
 import { INTERACTION_BY_ID } from '../data/interactions';
 import { DRAW_ROUNDS, DRAW_WORDS, normalizeGuess } from '../data/words';
 import type { AvatarLook } from '../engine/art/avatar';
-import type { Couple, Devotion, EventKind, FeedEvent, Game, GameKind, InvRow, Notebook, Page, Prayer, Profile, QuestKey, QuestState, RoomStyleRow, Shift } from './types';
+import type { Couple, Devotion, EventKind, FeedEvent, Game, GameKind, InvRow, Notebook, Page, Prayer, Profile, QuestKey, QuestState, RoomStyleOverride, RoomStyleRow, Shift } from './types';
 
 export class RuleError extends Error {}
 
@@ -208,11 +208,37 @@ export function autoSpot(w: World, item: string) {
   return findFreeSpot(def(item), w.placements, [], layoutOf(w.couple.home));
 }
 
+const TINT = /^#[0-9a-fA-F]{6}$/;
+
 export function setStyle(c: Ctx, style: RoomStyleRow) {
-  for (const k of [style.wallpaper, style.floor]) if (!c.w.unlocks.includes(k)) throw new RuleError('Buy that style in the store first.');
-  if (!/^(#[0-9a-fA-F]{6})?$/.test(style.wallTint) || !(style.floorTint == null || /^#[0-9a-fA-F]{6}$/.test(style.floorTint))) throw new RuleError('Pick a swatch.');
-  c.w.couple.style = { wallpaper: style.wallpaper, wallTint: style.wallTint, floor: style.floor, floorTint: style.floorTint ?? null };
+  const L = layoutOf(c.w.couple.home);
+  const own = (k: string | undefined) => { if (k && !c.w.unlocks.includes(k)) throw new RuleError('Buy that style at Maple Furnishings first.'); };
+  own(style.wallpaper); own(style.floor);
+  if (!/^(#[0-9a-fA-F]{6})?$/.test(style.wallTint) || !(style.floorTint == null || TINT.test(style.floorTint))) throw new RuleError('Pick a swatch.');
+  const rooms: NonNullable<RoomStyleRow['rooms']> = {};
+  for (const [id, o] of Object.entries(style.rooms ?? {})) {
+    if (!L.rooms.some((r) => r.id === id)) continue;
+    own(o.wallpaper); own(o.floor);
+    if ((o.wallTint != null && !/^(#[0-9a-fA-F]{6})?$/.test(o.wallTint)) || (o.floorTint != null && !TINT.test(o.floorTint))) throw new RuleError('Pick a swatch.');
+    const clean: RoomStyleOverride = {};
+    if (o.wallpaper) clean.wallpaper = o.wallpaper;
+    if (o.wallTint != null) clean.wallTint = o.wallTint;
+    if (o.floor) clean.floor = o.floor;
+    if (o.floorTint != null) clean.floorTint = o.floorTint;
+    if (Object.keys(clean).length) rooms[id] = clean;
+  }
+  c.w.couple.style = { wallpaper: style.wallpaper, wallTint: style.wallTint, floor: style.floor, floorTint: style.floorTint ?? null, ...(Object.keys(rooms).length ? { rooms } : {}) };
   event(c, 'decor', {});
+}
+
+/** Buy the next home up the ladder at Hearth & Home Realty. Everything stays exactly where it is. */
+export function moveHome(c: Ctx, id: string) {
+  const next = nextHome(c.w.couple.home);
+  if (!next) throw new RuleError('You already live in the biggest home on Maple Street.');
+  if (id !== next.id) throw new RuleError(`The next home for you is the ${next.name}.`);
+  spend(c, next.price, `home:${next.id}`);
+  c.w.couple.home = next.id;
+  event(c, 'decor', { moved: next.name });
 }
 
 export function setProfile(c: Ctx, patch: { name?: string; city?: string | null; tz?: string; tourDone?: boolean }) {

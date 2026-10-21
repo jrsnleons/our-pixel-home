@@ -349,3 +349,5 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 18px; border: 0; bo
 .areafade.on { opacity: 1; pointer-events: auto; }
 .areatag { position: absolute; left: 0; right: 0; top: calc(var(--safe-t) + 62px); z-index: 7; display: flex; justify-content: center; pointer-events: none; }
 .areatag .pill { pointer-events: auto; }
+.wholebtn { position: absolute; left: 12px; top: calc(var(--safe-t) + 62px); z-index: 6; gap: 6px; font-size: .8em; }
+.wholebtn[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
