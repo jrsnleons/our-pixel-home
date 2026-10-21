@@ -126,6 +126,21 @@ export async function act<K extends RpcName>(name: K, args: Rpcs[K], opts: { qui
   }
 }
 
+/**
+ * Show a change right away, before the server answers: apply `change` to the snapshot now, and
+ * put the old one back if the action is refused. Returns what `act` returns.
+ */
+export async function actOptimistic<K extends RpcName>(name: K, args: Rpcs[K], change: (s: Snapshot) => Snapshot): Promise<unknown> {
+  const before = snap.value;
+  if (before) snap.value = change(before);
+  const r = await act(name, args);
+  if (r === undefined && before && snap.value) {
+    // Only roll back what we changed; anything that arrived meanwhile stays.
+    snap.value = { ...snap.value, placements: before.placements, inventory: before.inventory };
+  }
+  return r;
+}
+
 export function itemName(key: string) { return ITEM_BY_KEY[key]?.name ?? PIECE_BY_KEY[key]?.name.toLowerCase() ?? key; }
 
 /** "5 min ago", "yesterday", "3 days ago" */

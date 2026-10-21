@@ -3,7 +3,8 @@
 import { useSignalEffect } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { sfx, startMusic, stopMusic, musicPlaying, setMusicVolume } from '../../audio/audio';
-import { ITEM_BY_KEY } from '../../data/catalog';
+import { ITEM_BY_KEY, ITEMS } from '../../data/catalog';
+import { prewarmThumbs } from '../thumbs';
 import { INTERACTION_BY_ID } from '../../data/interactions';
 import { isJob, JOBS, type JobKey } from '../../data/jobs';
 import { THEMES } from '../../data/themes';
@@ -208,6 +209,18 @@ export function Home() {
     };
     return () => { liveHandler = null; };
   }, [scene]);
+
+  // Draw the box and Store pictures while the phone is idle, so those sheets open instantly.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const s = snap.value;
+      if (!s) return;
+      const owned = s.inventory.map((r) => r.item);
+      const shop = ITEMS.filter((i) => i.kind === 'floor-item' || i.kind === 'wall-item').map((i) => i.key);
+      prewarmThumbs([...new Set([...owned, ...shop])], prefs.value.theme);
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
 
   // Daily visit reward, together-time ticks.
   useEffect(() => {
