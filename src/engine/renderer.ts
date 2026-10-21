@@ -85,6 +85,7 @@ export class Renderer {
   private camDir = new THREE.Vector3(0.62, 0.66, 0.78).normalize();
   readonly target = new THREE.Vector3(0, 1.05, 0.25);
   private baseDist = 40;
+  private visH = 11.2;
   zoom = 1;
   pan = new THREE.Vector2(0, 0);
   private w = 1;
@@ -155,11 +156,18 @@ export class Renderer {
   setView(pitch: number, fitW: number, yaw = DIAGONAL) {
     this.camDir.set(Math.sin(yaw) * FLAT, pitch, Math.cos(yaw) * FLAT).normalize();
     view.yaw = Math.atan2(this.camDir.x, this.camDir.z);
+    // A camera far above the street would see upright sprites edge-on: lean them back toward it.
+    view.tilt = Math.max(0, Math.atan2(pitch, FLAT) - 0.78) * 0.85;
     this.fitW = fitW;
     this.resize(this.w, this.h);
   }
 
   get activeScene() { return this.active; }
+
+  /** World units covered by one screen pixel at the middle of the view, at the current zoom. */
+  get unitsPerPixel() { return this.visH / this.zoom / this.h; }
+  /** How steeply the camera looks down, as the sine of its height angle (1 = straight down). */
+  get elevationSin() { return this.camDir.y; }
 
   setMood(bloom: number, tint: string, tintAmt: number, backdrop: string, into: THREE.Scene = this.scene) {
     this.bloom.strength = bloom;
@@ -207,6 +215,7 @@ export class Renderer {
     // Fit the room's diagonal across the width, with breathing room for HUD bars.
     const fitW = this.fitW;
     const visH = Math.max(fitW / this.camera.aspect, 11.2);
+    this.visH = visH;
     this.baseDist = visH / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     this.camera.far = this.baseDist + 60;
     this.camera.updateProjectionMatrix();

@@ -14,7 +14,7 @@ import {
 } from '../data/town';
 import { randomWear } from '../data/clothes';
 import type { ThemeKey } from '../data/themes';
-import { AreaScene, type AreaEvents, type Hotspot } from './area';
+import { AreaScene, rngAt, type AreaEvents, type Hotspot, type Seat } from './area';
 import { Actor } from './actor';
 import { DEFAULT_LOOK, HAIR_STYLES, type AvatarLook } from './art/avatar';
 import { cbox, flat, pbox, spriteTexture } from './art/kit';
@@ -26,12 +26,17 @@ import {
   paintSide, paintSign, paintStone, paintTree, paintWater, paintWillow,
 } from './art/town';
 import type { Daylight } from './daylight';
+import { fogAmount, weatherAt, type WeatherKind } from '../data/weather';
+import { WeatherFx } from './weather';
 
 /** The town's floor: one big rectangle (what's solid is in the blocked set). */
 export const TOWN_FLOOR: FloorPlan = { w: TOWN.w, d: TOWN.d, rooms: [{ id: 'street', name: 'Maple Town', x: 0, y: 0, w: TOWN.w, d: TOWN.d }] };
 
 /** Straight on and a little high, with about fourteen tiles across a phone. */
 const VIEW = { pitch: 0.8, fitW: 14, yaw: 0 };
+/** Up above the rooftops looking down, for finding your way around. */
+const VIEW_TOP = { pitch: 2.4, fitW: 15, yaw: 0 };
+export type TownView = 'front' | 'top';
 
 const wx = (x: number) => x - 3.5;
 const wz = (y: number) => y - 3.5;
@@ -69,6 +74,14 @@ export class TownScene extends AreaScene {
   private districtId: string | null = null;
   private districtT = 0;
   private billboardMats = new Map<string, THREE.MeshLambertMaterial>();
+  private weatherFx: WeatherFx;
+  private weatherPref: WeatherKind | 'auto' = 'auto';
+  private townView: TownView = 'front';
+  /** Who should be out right now (decided by the hour); people leave and arrive while off screen. */
+  private wanted = new Map<string, boolean>();
+  private snapFolk = true;
+  private folkT = 0;
+  private waiting = new Map<string, number>();
 
   constructor(r: ConstructorParameters<typeof AreaScene>[0], themeKey: ThemeKey, looks: { me: AvatarLook; partner: AvatarLook }, events: AreaEvents) {
     super(r, themeKey, TOWN_FLOOR, looks, events, VIEW, TOWN_SPAWN);
@@ -79,6 +92,8 @@ export class TownScene extends AreaScene {
     this.sunOffset.set(-6, 14, 7);
     Object.assign(this.sun.shadow.camera, { left: -13, right: 13, top: 15, bottom: -15, near: 1, far: 50 });
     this.sun.shadow.camera.updateProjectionMatrix();
+    this.zoomRange = [0.6, 2.6];
+    this.weatherFx = new WeatherFx(this.scene);
     this.glowMat = new THREE.MeshBasicMaterial({ map: spriteTexture(16, 16, paintGlow), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
     this.lantern = new THREE.MeshLambertMaterial({ color: '#FFE9B0', emissive: '#FFD27A', emissiveIntensity: 0 });
     this.build();
@@ -330,6 +345,28 @@ export class TownScene extends AreaScene {
     this.addHotspot(hotspot, [pick]);
   }
 
+  /** Tapping a bench walks you over and sits you down; a bench for two seats two. */
+  private buildBenchSeats(q: TownProp, f: NonNullable<TownProp['facing']>, cx: number, cz: number, w: number, d: number) {
+    const step = f === '+z' ? { x: 0, y: 1 } : f === '-z' ? { x: 0, y: -1 } : f === '+x' ? { x: 1, y: 0 } : { x: -1, y: 0 };
+    const horizontal = f === '+z' || f === '-z';
+    const n = horizontal ? w : d;
+    const seats: Seat[] = [];
+    for (let i = 0; i < n; i++) {
+      const tile = { x: q.x + (horizontal ? i : 0), y: q.y + (horizontal ? 0 : i) };
+      // Walk up from the front if there's room there, otherwise from either end or the back.
+      const options = [{ x: tile.x + step.x, y: tile.y + step.y }, { x: tile.x - (horizontal ? 1 : 0), y: tile.y - (horizontal ? 0 : 1) }, { x: tile.x + (horizontal ? 1 : 0), y: tile.y + (horizontal ? 0 : 1) }, { x: tile.x - step.x, y: tile.y - step.y }];
+      const approach = options.find((t) => !this.blocked.has(`${t.x},${t.y}`) && t.x >= 0 && t.y >= 0 && t.x < TOWN.w && t.y < TOWN.d);
+      if (!approach) continue;
+      seats.push({ approach, world: { x: wx(tile.x) + 0.5, z: wz(tile.y) + 0.5 }, facing: f, height: 0.36 });
+    }
+    if (!seats.length) return;
+    const hotspot: Hotspot = { id: `bench:${q.x},${q.y}`, kind: 'seat', label: 'Bench', approach: seats[0].approach, at: new THREE.Vector3(cx, 1.4, cz), seats };
+    const pick = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 1.0, d + 0.2), new THREE.MeshBasicMaterial({ visible: false }));
+    pick.position.set(cx, 0.5, cz);
+    this.scene.add(pick);
+    this.addHotspot(hotspot, [pick]);
+  }
+
   // ---------- Decorations ----------
 
   /** A sprite standing upright and facing the camera, sharing one material per picture. */
@@ -387,11 +424,12 @@ export class TownScene extends AreaScene {
       case 'bench': {
         const f = q.facing ?? '+z';
         const along = f === '+z' || f === '-z';
-        const bw = along ? 0.9 : 0.42, bd = along ? 0.42 : 0.9;
+        const bw = along ? w - 0.1 : 0.42, bd = along ? 0.42 : d - 0.1;
         s.add(cbox(cx - bw / 2, 0.3, cz - bd / 2, bw, 0.08, bd, '#A87A54'));
         for (const [lx, lz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) s.add(cbox(cx + lx * (bw / 2 - 0.08) - 0.04, 0, cz + lz * (bd / 2 - 0.08) - 0.04, 0.08, 0.3, 0.08, '#3A3A46'));
         const back = { '+z': [cx - bw / 2, cz - bd / 2, bw, 0.07], '-z': [cx - bw / 2, cz + bd / 2 - 0.07, bw, 0.07], '+x': [cx - bw / 2, cz - bd / 2, 0.07, bd], '-x': [cx + bw / 2 - 0.07, cz - bd / 2, 0.07, bd] }[f];
         s.add(cbox(back[0], 0.38, back[1], back[2], 0.36, back[3], '#8A6244'));
+        this.buildBenchSeats(q, f, cx, cz, w, d);
         break;
       }
       case 'planter': {
@@ -750,6 +788,58 @@ export class TownScene extends AreaScene {
     }
   }
 
+  // ---------- Camera and sky ----------
+
+  /** Straight on like Octopath Traveler, or high above the street looking down. */
+  setTownView(v: TownView) {
+    this.townView = v;
+    this.applyView();
+    if (this.active) this.r.setView(this.view.pitch, this.view.fitW, this.view.yaw);
+  }
+  get townViewNow() { return this.townView; }
+  private applyView() { this.view = this.townView === 'top' ? VIEW_TOP : VIEW; }
+
+  /** Pick the weather ('auto' follows the calendar, the same for both of you). */
+  setWeatherPref(p: WeatherKind | 'auto') {
+    this.weatherPref = p;
+    // Lighting is shared by every scene, so only repaint it while the town is the one on screen.
+    if (this.active) this.applyDaylight(true);
+  }
+  protected override weatherNow(): WeatherKind {
+    return this.weatherPref === 'auto' ? weatherAt(Date.now(), this.theme.key) : this.weatherPref;
+  }
+  get weatherShown(): WeatherKind { return this.weatherNow(); }
+
+  // ---------- Night life ----------
+
+  /** Who's out: everyone by day, most of the town gone home by night, a few night owls and the busker. */
+  private planFolk(hour: number, lampsOn: boolean) {
+    const late = hour >= 22 || hour < 5;
+    const evening = hour >= 20 && hour < 22;
+    for (const n of this.npcs) {
+      let out = true;
+      if (this.nightOnly.has(n.id)) out = lampsOn;
+      else if (late) out = rngAt(n.seed, 91) < 0.18;
+      else if (evening || (hour >= 5 && hour < 6.5)) out = rngAt(n.seed, 92) < 0.6;
+      this.wanted.set(n.id, out);
+      if (this.snapFolk) n.actor.group.visible = out;
+    }
+  }
+
+  /** Let people head in or out only where nobody is watching, so no one blinks in or out of the street. */
+  private swapFolk() {
+    for (const n of this.npcs) {
+      const out = this.wanted.get(n.id);
+      if (out == null || n.actor.group.visible === out) { this.waiting.delete(n.id); continue; }
+      const since = (this.waiting.get(n.id) ?? this.clock) ;
+      this.waiting.set(n.id, since);
+      const p = this.project(n.actor.head());
+      const rect = this.r.canvas.getBoundingClientRect();
+      const onScreen = p.visible && p.x > rect.left - 40 && p.x < rect.right + 40 && p.y > rect.top - 80 && p.y < rect.bottom + 40;
+      if (!onScreen || this.clock - since > 60) { n.actor.group.visible = out; this.waiting.delete(n.id); }
+    }
+  }
+
   // ---------- Time of day ----------
 
   protected applyDay(d: Daylight) {
@@ -762,19 +852,25 @@ export class TownScene extends AreaScene {
     this.hemi.intensity = 0.9 * d.ambientPower;
     this.sun.color.set(d.sun);
     this.sun.intensity = d.sunPower * 1.1;
-    this.r.setMood(T.mood.bloom, T.mood.grade, T.mood.gradeAmount * 0.7, mix(d.sky[1], d.sky[2], 0.4), this.scene);
     for (const l of this.lit) l.mat.emissiveIntensity = 0.95 * dusk * l.strength;
     this.glowMat.opacity = 0.85 * dusk;
     this.lantern.emissiveIntensity = 1.2 * dusk;
     for (const m of this.waterMats) m.emissiveIntensity = 0.15 + 0.2 * dusk;
-    // The busker only plays once the lamps are on.
-    const lampsOn = dusk > 0.5;
-    for (const n of this.npcs) if (this.nightOnly.has(n.id)) n.actor.group.visible = lampsOn;
-    if (T.weather === 'rain') this.hemi.color.set(mix('#FFFFFF', '#8A9AA6', 0.5));
+    // Fewer people are out as the night goes on; the busker only plays once the lamps are on.
+    this.planFolk(d.hour, dusk > 0.5);
+    // The sky: fog thickens after dark and with bad weather, rain and snow fall around the camera.
+    const w = this.weatherNow();
+    this.weatherFx.set(w, fogAmount(d.hour, w), d.sky[2]);
+    if (w === 'rain' || w === 'snow') this.hemi.color.set(mix('#FFFFFF', '#8A9AA6', 0.5));
+    // Wet streets, snow and haze take the shine off the lamps' bloom a little and cool the picture.
+    this.r.setMood(T.mood.bloom * (w === 'clear' ? 1 : 0.85), w === 'snow' ? '#DCE6F8' : w === 'rain' ? '#B8C8DC' : T.mood.grade, T.mood.gradeAmount * (w === 'clear' ? 0.7 : 1), mix(d.sky[1], d.sky[2], 0.4), this.scene);
     this.tickClock();
   }
 
   protected override tickArea(dt: number, t: number) {
+    this.weatherFx.update(dt, t, this.r.target, this.r.camera.position.distanceTo(this.r.target));
+    this.folkT += dt;
+    if (this.folkT > 0.6) { this.folkT = 0; this.swapFolk(); }
     for (const w of this.waters) { w.offset.x = (t * 0.05) % 1; w.offset.y = Math.sin(t * 0.4) * 0.04; }
     for (const b of this.bobbers) b.o.position.y = b.y + Math.sin(t * 1.6 + b.phase) * 0.04;
     for (const k of this.ducks) {
@@ -797,7 +893,11 @@ export class TownScene extends AreaScene {
   }
 
   override start() {
+    // Arriving, everyone who should be out is already out (and nobody pops in later in view).
+    this.snapFolk = true;
+    this.applyView();
     super.start();
+    this.snapFolk = false;
     // Arriving shows where you are, even if it's the same district as last time.
     const d = districtAt(this.me.tile);
     this.districtId = d?.id ?? null;

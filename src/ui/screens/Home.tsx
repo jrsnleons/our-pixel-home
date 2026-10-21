@@ -11,7 +11,8 @@ import { INTERIOR_DOOR, INTERIORS, PLACE_BY_ID, TOWN_SPAWN, type Place } from '.
 import { THEMES } from '../../data/themes';
 import type { Placement, Tile } from '../../core/grid';
 import { layoutOf } from '../../core/layout';
-import type { AreaEvents, AreaScene, Hotspot } from '../../engine/area';
+import type { AreaEvents, AreaScene, Hold, Hotspot } from '../../engine/area';
+import { WEATHER_KINDS, WEATHER_LABEL, type WeatherKind } from '../../data/weather';
 import type { InteriorScene } from '../../engine/interior';
 import { HomeScene, type ScreenPoint, type SettleState } from '../../engine/scene';
 import type { TownScene } from '../../engine/town';
@@ -19,7 +20,7 @@ import type { LocalBackend } from '../../net/local';
 import type { GameKind, LiveMsg } from '../../net/types';
 import { loadLast, saveLast } from '../../state/resume';
 import { area, areaName, inside, insideOf, partnerArea, shopCtx, type AreaId } from '../../state/area';
-import { act, backend, coins, couple, day, markFeedSeen, painted, partner, partnerLastSeen, partnerOnline, prefs, sceneCovers, sheet, snap, toast, tourReplay, unseen, withLoading, type Sheet } from '../../state/store';
+import { act, backend, coins, couple, day, markFeedSeen, painted, partner, partnerLastSeen, partnerOnline, prefs, sceneCovers, setPrefs, sheet, snap, toast, tourReplay, unseen, withLoading, type Sheet } from '../../state/store';
 import { Coin, Icon } from '../kit';
 import { FurnitureBubble, MeBubble, PartnerBubble, SayBubble } from '../overlays/Bubbles';
 import { Tour } from '../overlays/Tour';
@@ -42,6 +43,8 @@ import { GameSheet } from '../games/GameSheet';
 import { Celebrate, Feed, ItemSheet, Quests, SinceDate, todaysMilestone, type ItemSheetKind } from '../panels/Small';
 
 export let sceneRef: HomeScene | null = null;
+
+const WEATHER_ICON: Record<WeatherKind, string> = { clear: 'sun', rain: 'water', snow: 'sparkle', mist: 'moon' };
 
 /** The job games load when a workplace is first opened. */
 const Work = lazy<Parameters<typeof WorkPanel>[0]>(() => import('../panels/Work').then((m) => m.Work));
@@ -82,6 +85,7 @@ export function Home() {
   const [sinceLater, setSinceLater] = useState(false);
   const [celebrate, setCelebrate] = useState<{ label: string; day: string } | null>(null);
   const [talk, setTalk] = useState<{ name: string; line: string; at: ScreenPoint } | null>(null);
+  const [holding, setHolding] = useState<Hold | null>(null);
   const [lobby, setLobby] = useState<{ place: Place; job?: JobKey } | null>(null);
   const [fade, setFade] = useState(false);
   const [tourDoneHere, setTourDoneHere] = useState(() => { try { return localStorage.getItem('oph.tour') === '1'; } catch { return false; } });
@@ -159,7 +163,12 @@ export function Home() {
     hotspot: (h) => uiRef.current.hotspot(h),
     tapNpc: (id, at) => uiRef.current.npc(id, at),
     tapPartner: (at) => uiRef.current.partner(at),
-    walked: (from, path) => backend.send({ t: 'walk', from, path }),
+    walked: (from, path, follow) => backend.send({ t: 'walk', from, path, ...(follow ? { hold: 1 as const } : {}) }),
+    settled: (state) => backend.send({ t: 'settle', state }),
+    hold: (h, send) => {
+      setHolding(h);
+      if (send) backend.send({ t: 'hold', mode: h?.mode ?? null, leader: h ? (h.leader === 'me' ? 'sender' : h.leader === 'partner' ? 'receiver' : 'either') : undefined });
+    },
     tapEmpty: () => { setTalk(null); setBubble(null); },
     district: (d) => setDistrict({ ...d, k: Date.now() }),
   };
@@ -167,7 +176,7 @@ export function Home() {
   const lockedPlaces = () => new Set(Object.values(PLACE_BY_ID).filter((p) => p.jobs && p.jobs.every((j) => jobLock(snap.value?.me, j))).map((p) => p.id));
   const getTown = async () => {
     const a = areas.current;
-    if (!a.town) { const { TownScene } = await loadPlaces(); a.town = new TownScene(sceneRef!.r, prefs.value.theme, looksNow(), areaEvents); a.town.setLocked(lockedPlaces()); }
+    if (!a.town) { const { TownScene } = await loadPlaces(); a.town = new TownScene(sceneRef!.r, prefs.value.theme, looksNow(), areaEvents); a.town.setLocked(lockedPlaces()); a.town.setTownView(prefs.value.townView); a.town.setWeatherPref(prefs.value.weather); }
     return a.town;
   };
   const getInside = async (id: string) => {
@@ -304,7 +313,7 @@ export function Home() {
       const info = (here() as TownScene | InteriorScene | null)?.npcInfo(id);
       if (info) setTalk({ ...info, at });
     },
-    partner: (at) => { if (!snap.value?.partner) return; sfx('heart'); here()?.fx.spawn('heart', here()!.partner.head(), { count: 3, spread: 0.4 }); backend.send({ t: 'heart' }); void act('heart', {}, { quiet: true }); void at; },
+    partner: (at) => { if (!snap.value?.partner) return; sfx('tap'); setBubble({ kind: 'partner', at }); },
   };
 
   // The shelves follow the calendar (new stock every Monday) and what you own (next steps, outfits on the mannequins).
@@ -332,6 +341,21 @@ export function Home() {
       a.ins.clear();
     }
   });
+
+  // The town's camera and weather follow the settings; "auto" weather is re-read now and then as the sky changes.
+  const [, repaint] = useState(0);
+  useSignalEffect(() => {
+    const t = areas.current.town;
+    const v = prefs.value.townView, w = prefs.value.weather;
+    if (!t) return;
+    t.setTownView(v);
+    t.setWeatherPref(w);
+  });
+  useEffect(() => {
+    const t = setInterval(() => repaint((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const townWeather: WeatherKind = areas.current.town?.weatherShown ?? 'clear';
 
   // Save where we are whenever the app is hidden or closed, and every few seconds besides.
   useEffect(() => {
@@ -442,10 +466,16 @@ export function Home() {
       switch (m.t) {
         case 'walk':
           if (partnerArea.value !== area.value) break;
-          if (area.value === 'home') { partnerSettled.current = null; scene.remoteWalk(m.from, m.path); } else here()?.remoteWalk(m.from, m.path);
+          if (area.value === 'home') { partnerSettled.current = null; scene.remoteWalk(m.from, m.path); } else here()?.remoteWalk(m.from, m.path, !!m.hold);
           break;
         case 'area': partnerArea.value = m.area; showPartner(m.at); break;
-        case 'settle': if (area.value !== 'home') break; partnerSettled.current = m.state && m.state.pose !== 'stand' ? m.state : null; scene.remoteSettle(m.state); break;
+        case 'settle': if (area.value !== 'home') { if (partnerArea.value === area.value) here()?.remoteSettle(m.state); break; } partnerSettled.current = m.state && m.state.pose !== 'stand' ? m.state : null; scene.remoteSettle(m.state); break;
+        case 'hold': {
+          if (area.value === 'home' || partnerArea.value !== area.value) break;
+          here()?.setHold(m.mode ? { mode: m.mode, leader: m.leader === 'sender' ? 'partner' : m.leader === 'receiver' ? 'me' : 'either' } : null, false);
+          if (m.mode) { sfx('heart'); toast(`${pName} took your hand`, 'love'); }
+          break;
+        }
         case 'interact': {
           scene.playInteraction(m.play, false);
           const d = INTERACTION_BY_ID[m.play.id];
@@ -526,6 +556,16 @@ export function Home() {
     open('decorate');
   };
 
+  /** Play a together-animation: arrange us (at the bed or sofa I tapped, if any), show it, tell my partner. */
+  const doInteraction = async (id: string, at?: Placement) => {
+    if (!scene) return;
+    const play = await scene.startInteraction(id, at);
+    if (!play) { toast('Couldn’t do that here. Try somewhere with more room.', 'error'); return; }
+    backend.send({ t: 'interact', play });
+    sfx('heart');
+    await act('interaction', { id }, { quiet: true });
+  };
+
   const startGame = async (kind: GameKind, p?: Placement) => {
     setBubble(null);
     if (!partner.value) { toast('Games need your partner. Send them your code first.', 'error'); return; }
@@ -590,6 +630,22 @@ export function Home() {
           <Icon name="map" size="s" /><span>Map</span>
         </button>
       )}
+      {area.value === 'town' && sheet.value == null && !mapOpen && (
+        <>
+          <button class="pill townbtn" style={{ top: 'calc(var(--safe-t) + 152px)' }} aria-label="Camera view"
+            onClick={() => { sfx('tap'); setPrefs({ townView: prefs.value.townView === 'top' ? 'front' : 'top' }); }}>
+            <Icon name="camera" size="s" /><span>{prefs.value.townView === 'top' ? 'Top view' : 'Front view'}</span>
+          </button>
+          <button class="pill townbtn" style={{ top: 'calc(var(--safe-t) + 196px)' }} aria-label="Weather"
+            onClick={() => { sfx('tap'); const order = ['auto', ...WEATHER_KINDS] as const; setPrefs({ weather: order[(order.indexOf(prefs.value.weather) + 1) % order.length] }); }}>
+            <Icon name={WEATHER_ICON[prefs.value.weather === 'auto' ? townWeather : prefs.value.weather]} size="s" />
+            <span>{prefs.value.weather === 'auto' ? `Auto · ${WEATHER_LABEL[townWeather]}` : WEATHER_LABEL[prefs.value.weather]}</span>
+          </button>
+        </>
+      )}
+      {holding && area.value !== 'home' && sheet.value == null && (
+        <div class="holdchip pill"><Icon name="heart" size="s" /><span>Holding hands</span><button class="btn small soft" onClick={() => here()?.letGo()}>Let go</button></div>
+      )}
       {district && area.value === 'town' && !mapOpen && (
         <div class="district-banner" key={district.k}><b>{district.name}</b><span>{district.blurb}</span></div>
       )}
@@ -602,6 +658,7 @@ export function Home() {
       {bubble?.kind === 'furniture' && scene && (
         <FurnitureBubble p={bubble.p} at={bubble.at} scene={scene} music={music}
           onClose={() => setBubble(null)}
+          onTogether={(id) => void doInteraction(id, bubble.p)}
           onGame={(k) => void startGame(k, bubble.p)}
           onNotes={(tab) => { setBubble(null); setNotesTab(tab); sheet.value = 'notes'; }}
           onSheet={(kind) => { setBubble(null); setItemSheet({ kind, p: bubble.p }); }}
@@ -611,13 +668,18 @@ export function Home() {
       )}
       {bubble?.kind === 'partner' && scene && (
         <PartnerBubble at={bubble.at} online={pOnline} lastSeen={partnerLastSeen.value} name={partner.value?.name ?? ''}
+          inArea={area.value !== 'home'} holding={!!holding}
           onHeart={async () => {
             setBubble(null);
-            scene.spawn('heart', 'partner', 3); sfx('heart');
+            if (area.value === 'home') scene.spawn('heart', 'partner', 3);
+            else here()?.fx.spawn('heart', here()!.partner.head(), { count: 3, spread: 0.4 });
+            sfx('heart');
             backend.send({ t: 'heart' });
             await act('heart', {});
           }}
           onWheel={() => { setBubble(null); setWheel(true); }}
+          onHold={(mode, leader) => { setBubble(null); sfx('heart'); here()?.setHold({ mode, leader }); }}
+          onLetGo={() => { setBubble(null); here()?.letGo(); }}
           onClose={() => setBubble(null)}
         />
       )}
@@ -625,14 +687,7 @@ export function Home() {
       {bubble?.kind === 'me' && scene && <MeBubble at={bubble.at} scene={scene} onClose={() => setBubble(null)} />}
 
       {wheel && scene && (
-        <InteractionWheel onClose={() => setWheel(false)} onPick={async (id) => {
-          setWheel(false);
-          const play = await scene.startInteraction(id);
-          if (!play) { toast('Couldn’t do that here. Try somewhere with more room.', 'error'); return; }
-          backend.send({ t: 'interact', play });
-          sfx('heart');
-          await act('interaction', { id }, { quiet: true });
-        }} />
+        <InteractionWheel onClose={() => setWheel(false)} onPick={(id) => { setWheel(false); void doInteraction(id); }} />
       )}
 
       {invite && (

@@ -276,6 +276,22 @@ function props(): TownProp[] {
   for (const p of PLACES.filter((q) => q.kind === 'residence' && q.y > 60)) out.push(P('mailbox', p.door.x + 2, p.door.y));
   for (const [x, y] of [[19, 62], [28, 62], [1, 64], [9, 64], [17, 62], [30, 62], [38, 64], [46, 64]]) tree(x, y, 'bush');
   tree(14, 60, 'tree'); tree(33, 62, 'tree');
+
+  // Every bench seats two: stretch it over the tile beside it (benches that touch become one).
+  const along = (b: TownProp) => (b.facing === '+x' || b.facing === '-x' ? { dx: 0, dy: 1 } : { dx: 1, dy: 0 });
+  const roomFor = (x: number, y: number) => !SOLID_GROUND.has(groundAt(x, y))
+    && !PLACES.some((p) => x >= p.x - 1 && x <= p.x + p.w && y >= p.y - 1 && y <= p.y + p.d)
+    && !out.some((q) => x >= q.x && y >= q.y && x < q.x + (q.w ?? 1) && y < q.y + (q.d ?? 1));
+  for (const b of out.filter((q) => q.kind === 'bench')) {
+    if (!out.includes(b)) continue;
+    const { dx, dy } = along(b);
+    const mate = out.find((q) => q !== b && q.kind === 'bench' && q.facing === b.facing && q.x === b.x + dx && q.y === b.y + dy);
+    if (mate) out.splice(out.indexOf(mate), 1);
+    else if (roomFor(b.x + dx, b.y + dy)) { /* grows forward */ }
+    else if (roomFor(b.x - dx, b.y - dy)) { b.x -= dx; b.y -= dy; }
+    else continue;
+    b.w = dx ? 2 : 1; b.d = dy ? 2 : 1;
+  }
   return out;
 }
 

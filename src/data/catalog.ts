@@ -49,7 +49,7 @@ export const ITEMS: ItemDef[] = [
   F({ key: 'bed_futon', name: 'Futon', category: 'bed', tier: 1, price: 150, size: [2, 3], actions: ['sleep', 'sit'], blurb: 'A thick cotton futon on a low slatted base.' }),
   F({ key: 'bed_wood', name: 'Wooden bed', category: 'bed', tier: 2, price: 250, size: [2, 3], actions: ['sleep', 'sit'], blurb: 'A sturdy frame with a heart carved in the headboard.' }),
   F({ key: 'bed_quilted', name: 'Quilted double', category: 'bed', tier: 3, price: 900, size: [2, 3], actions: ['sleep', 'sit'], unlocks: ['cuddle'], blurb: 'Two pillows, a hand-stitched quilt, room for both of you.' }),
-  F({ key: 'bed_canopy', name: 'Canopy bed', category: 'bed', tier: 4, price: 2200, size: [2, 3], actions: ['sleep', 'sit'], unlocks: ['cuddle', 'nap_together'], blurb: 'Draped posts and soft curtains. Unlocks napping together.' }),
+  F({ key: 'bed_canopy', name: 'Canopy bed', category: 'bed', tier: 4, price: 2200, size: [2, 3], actions: ['sleep', 'sit'], unlocks: ['cuddle', 'nap_together'], blurb: 'Draped posts and soft curtains. Room for two to sleep.' }),
 
   // Tables
   F({ key: 'table_box', name: 'Cardboard box', category: 'table', tier: 0, price: 30, size: [1, 1], blurb: 'It held your stuff on moving day. Now it holds your tea.' }),

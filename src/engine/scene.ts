@@ -17,11 +17,12 @@ import type { ItemArt } from './art/furniture';
 import { dispose } from './art/kit';
 import type { WallArt, WallContext } from './art/wall';
 import { daylight, type Daylight } from './daylight';
+import type { ScreenPoint } from './area';
 import { Effects, type FxKind } from './fx';
 import { Renderer } from './renderer';
 import { RoomShell, type RoomStyle } from './room';
 
-export interface ScreenPoint { x: number; y: number }
+export type { ScreenPoint };
 
 export interface SceneEvents {
   tapFurniture(p: Placement, at: ScreenPoint): void;
@@ -560,7 +561,8 @@ export class HomeScene {
         this.applySettle(this.me, a);
         this.events.settled(a);
         const b = this.settleOf(this.partner, sb, p.id);
-        if (partnerToo && this.partnerOnline) this.applySettle(this.partner, b);
+        // A partner who's asleep already is tucked into the same bed.
+        if (partnerToo && (this.partnerOnline || action === 'sleep')) this.applySettle(this.partner, b);
         resolve({ a, b });
       });
       if (!ok) resolve(null);
@@ -572,7 +574,7 @@ export class HomeScene {
   private after(sec: number, fn: () => void) { this.timers.push({ at: this.clock + sec, fn }); }
 
   /** Start an interaction from my side: arrange, then play. Returns the arrangement to broadcast. */
-  async startInteraction(id: string): Promise<InteractionPlay | null> {
+  async startInteraction(id: string, at?: Placement): Promise<InteractionPlay | null> {
     const def = INTERACTION_BY_ID[id];
     if (!def || this.interacting) return null;
     const me = this.me, other = this.partner;
@@ -583,7 +585,9 @@ export class HomeScene {
     if (def.arrange === 'seat' || def.arrange === 'bed') {
       const action: Action = def.arrange === 'bed' ? 'sleep' : 'sit';
       const allowed = def.needs?.items ?? [];
-      const seat = this.placements.find((p) => allowed.includes(p.item) && spotsFor(p, action, this.placements, this.L).length >= 2);
+      const roomy = (p: Placement) => allowed.includes(p.item) && spotsFor(p, action, this.placements, this.L).length >= 2;
+      // The bed or sofa I tapped, if it's the right kind; otherwise the best one in the room.
+      const seat = at && roomy(at) ? at : [...this.placements].sort((a, b) => (ITEM_BY_KEY[b.item]?.tier ?? 0) - (ITEM_BY_KEY[a.item]?.tier ?? 0)).find(roomy);
       if (!seat) return null;
       const res = await this.bothUse(seat, action, true);
       if (!res) return null;
@@ -1076,6 +1080,11 @@ export class HomeScene {
     return { x: p.x + rect.left, y: p.y + rect.top };
   }
 
+  /** Like screenOf, but the point keeps following `get()` as people walk and the camera moves. */
+  private anchor(get: () => THREE.Vector3): ScreenPoint {
+    return { ...this.screenOf(get()), track: () => this.screenOf(get()) };
+  }
+
   private tap(sx: number, sy: number) {
     this.setRay(sx, sy);
     if (this.placing) { this.dragPlacingTo(sx, sy); return; }
@@ -1087,8 +1096,8 @@ export class HomeScene {
       if (actor && !this.decorating) {
         // Sprites are rectangles: ignore taps on transparent pixels by requiring a hit in the
         // middle 70% of the width.
-        if (actor === this.partner) { this.events.tapPartner(this.screenOf(actor.head())); return; }
-        if (actor === this.me) { this.events.tapMe(this.screenOf(actor.head())); return; }
+        if (actor === this.partner) { this.events.tapPartner(this.anchor(() => actor.head())); return; }
+        if (actor === this.me) { this.events.tapMe(this.anchor(() => actor.head())); return; }
       }
       const id = h.object.userData.placementId as string | undefined;
       if (id) {
@@ -1098,7 +1107,8 @@ export class HomeScene {
         if (this.decorating) { this.selected = id; this.paintGrid(); this.events.decorTap(inst.p); return; }
         if (def?.flat) continue; // rugs: treat as floor
         const top = new THREE.Box3().setFromObject(inst.root);
-        const at = this.screenOf(new THREE.Vector3((top.min.x + top.max.x) / 2, top.max.y + 0.2, (top.min.z + top.max.z) / 2));
+        const anchorAt = new THREE.Vector3((top.min.x + top.max.x) / 2, top.max.y + 0.2, (top.min.z + top.max.z) / 2);
+        const at = this.anchor(() => anchorAt);
         this.events.tapFurniture(inst.p, at);
         return;
       }

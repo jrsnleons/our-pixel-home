@@ -170,7 +170,10 @@ export type Patch = Partial<Omit<Snapshot, 'me'>> & { me?: Profile; toast?: stri
 
 /** Live, unsaved messages between the two phones. */
 export type LiveMsg =
-  | { t: 'walk'; from: Tile; path: Tile[] }
+  /** `hold`: they were only keeping up with me while holding hands, so I'm still the one leading. */
+  | { t: 'walk'; from: Tile; path: Tile[]; hold?: 1 }
+  /** Holding hands while walking. `leader` is from the sender's side; mode null lets go. */
+  | { t: 'hold'; mode: 'side' | 'follow' | null; leader?: 'sender' | 'receiver' | 'either' }
   /** I went somewhere else (home, town, or inside a building) and appeared at `at`. */
   | { t: 'area'; area: string; at: Tile }
   | { t: 'settle'; state: SettleState | null }

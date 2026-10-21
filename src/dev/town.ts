@@ -1,4 +1,4 @@
-// Dev-only page for looking at the town: /town.html?theme=honey&hour=19&x=6&y=30
+// Dev-only page for looking at the town: /town.html?theme=honey&hour=19&x=6&y=30&weather=rain&view=top&zoom=1.5
 import { THEMES, type ThemeKey } from '../data/themes';
 import { DEFAULT_LOOK } from '../engine/art/avatar';
 import { Renderer } from '../engine/renderer';
@@ -30,6 +30,9 @@ if (q.has('locked') && !inside) town.setLocked(new Set(['flowers', 'parcel', 'la
 if (inside === 'maple') (town as unknown as InteriorScene).setStock(furnitureEntries(new Date(), { unlocks: [], inventory: [], placements: [{ item: 'bed_mat' }] }));
 if (inside === 'boutique') (town as unknown as InteriorScene).setStock(boutiqueEntries(new Date(), [], looks));
 if (q.has('hour')) town.hourOverride = Number(q.get('hour'));
+if (!inside && q.has('weather')) town.setWeatherPref(q.get('weather') as 'auto');
+if (!inside && q.get('view') === 'top') town.setTownView('top');
+if (q.has('zoom')) town.setZoom(Number(q.get('zoom')));
 town.start();
 const fit = () => r.resize(innerWidth, innerHeight);
 addEventListener('resize', fit); fit();
