@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { cellsOf, key } from '../src/core/grid';
 import { findPath } from '../src/core/pathfinding';
 import { ITEM_BY_KEY } from '../src/data/catalog';
-import { INTERIOR_DOOR, INTERIORS, PLACES, PLACE_BY_ID, TOWN, TOWN_SPAWN, townBlocked } from '../src/data/town';
+import { DISTRICTS, districtWaypoints, INTERIOR_DOOR, INTERIORS, PLACES, PLACE_BY_ID, TOWN, TOWN_PROPS, TOWN_SPAWN, TOWNSFOLK, townBlocked } from '../src/data/town';
 import { JOBS } from '../src/data/jobs';
 
 const floorOf = (w: number, d: number) => ({ w, d, rooms: [{ id: 'main', name: 'x', x: 0, y: 0, w, d }] });
 const TOWN_FLOOR = floorOf(TOWN.w, TOWN.d);
 
-describe('Maple Street', () => {
+describe('Maple Town', () => {
   const blocked = townBlocked();
 
   it('has unique places whose bodies never overlap', () => {
@@ -28,6 +28,49 @@ describe('Maple Street', () => {
     for (const p of PLACES) {
       expect(blocked.has(key(p.door.x, p.door.y)), `${p.id} door is blocked`).toBe(false);
       expect(findPath(TOWN_SPAWN, p.door, blocked, TOWN_FLOOR), `no way to ${p.id}`).not.toBeNull();
+    }
+  });
+
+  it('keeps decorations off buildings, doorsteps and each other', () => {
+    const doors = new Set(PLACES.map((p) => key(p.door.x, p.door.y)));
+    const bodies = new Set<string>();
+    for (const p of PLACES) for (let y = p.y; y < p.y + p.d; y++) for (let x = p.x; x < p.x + p.w; x++) bodies.add(key(x, y));
+    const taken = new Set<string>();
+    for (const q of TOWN_PROPS) {
+      for (let y = q.y; y < q.y + (q.d ?? 1); y++) for (let x = q.x; x < q.x + (q.w ?? 1); x++) {
+        const k = key(x, y);
+        expect(x >= 0 && y >= 0 && x < TOWN.w && y < TOWN.d, `${q.kind} at ${k} is on the map`).toBe(true);
+        expect(bodies.has(k), `${q.kind} inside a building at ${k}`).toBe(false);
+        expect(doors.has(k), `${q.kind} on a doorstep at ${k}`).toBe(false);
+        if (q.open) continue;
+        expect(taken.has(k), `${q.kind} overlaps another decoration at ${k}`).toBe(false);
+        taken.add(k);
+      }
+    }
+  });
+
+  it('has no walled-off pockets: every open tile can be walked to from home', () => {
+    const seen = new Set([key(TOWN_SPAWN.x, TOWN_SPAWN.y)]);
+    const todo = [TOWN_SPAWN];
+    while (todo.length) {
+      const t = todo.pop()!;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = { x: t.x + dx, y: t.y + dy }, k = key(n.x, n.y);
+        if (n.x < 0 || n.y < 0 || n.x >= TOWN.w || n.y >= TOWN.d || blocked.has(k) || seen.has(k)) continue;
+        seen.add(k); todo.push(n);
+      }
+    }
+    const stranded: string[] = [];
+    for (let y = 0; y < TOWN.d; y++) for (let x = 0; x < TOWN.w; x++) if (!blocked.has(key(x, y)) && !seen.has(key(x, y))) stranded.push(key(x, y));
+    expect(stranded).toEqual([]);
+  });
+
+  it('gives every townsperson somewhere to be', () => {
+    for (const t of TOWNSFOLK) {
+      if (typeof t.home === 'string') {
+        expect(DISTRICTS.some((d) => d.id === t.home), `${t.name}'s district`).toBe(true);
+        expect(districtWaypoints(t.home, blocked).length, `${t.name} has places to wander`).toBeGreaterThan(3);
+      } else expect(blocked.has(key(t.home.x, t.home.y)), `${t.name} stands on open ground`).toBe(false);
     }
   });
 

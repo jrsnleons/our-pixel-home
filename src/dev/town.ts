@@ -23,7 +23,7 @@ const events = {
 const inside = q.get('inside');
 const town = inside ? new InteriorScene(r, theme, INTERIORS[inside], looks, events) as unknown as TownScene : new TownScene(r, theme, looks, events);
 void THEMES;
-const x = Number(q.get('x') ?? (inside ? 0 : 6)), y = Number(q.get('y') ?? (inside ? 5 : 41));
+const x = Number(q.get('x') ?? (inside ? 0 : 23)), y = Number(q.get('y') ?? (inside ? 5 : 68));
 town.placeMe({ x, y });
 if (q.get('partner') !== 'off') town.setPartnerHere(true, { x: x + 1, y });
 if (q.has('locked') && !inside) town.setLocked(new Set(['flowers', 'parcel', 'labs']));

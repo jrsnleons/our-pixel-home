@@ -116,7 +116,7 @@ function Detail({ def, onBack, onClose, owned }: { def: ItemDef; onBack: () => v
           {afford ? <>Buy for <Coin n={def.price} /></> : <>Need <Coin n={def.price - coins.value} /> more</>}
         </button>
       )}
-      {!afford && !owned && <p class="tiny muted center">Earn coins with shifts on Maple Street, quests, notes, quiet time and time together.</p>}
+      {!afford && !owned && <p class="tiny muted center">Earn coins with shifts in Maple Town, quests, notes, quiet time and time together.</p>}
     </Sheet>
   );
 }

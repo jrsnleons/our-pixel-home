@@ -37,7 +37,7 @@ function MyLook() {
         <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, tap your clothes rack, mirror or wardrobe in the room.</p>
       ) : (
         <>
-          <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, you’ll need somewhere to get changed. A clothes rack is sold at Maple Furnishings on Maple Street, out your front door.</p>
+          <p class="small center" style={{ margin: 0 }}>To change your clothes, hair or face, you’ll need somewhere to get changed. A clothes rack is sold at Maple Furnishings on Market Street, out your front door and up the avenue.</p>
         </>
       )}
       <p class="small center muted" style={{ margin: 0 }}>New clothes arrive at The Boutique every Monday.</p>

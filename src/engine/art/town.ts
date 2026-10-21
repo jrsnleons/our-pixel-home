@@ -2,61 +2,117 @@
 // little props. Everything is drawn in code at 16 px per tile, like the furniture.
 
 import { mix, ramp, shade } from '../../core/color';
-import { LAMPS, rowY, TOWN, type Place } from '../../data/town';
+import { AVENUE, ELM_ST, G, groundAt, MARKET_ST, SQUARE, TOWN, type Place } from '../../data/town';
 import { drawText, textWidth } from './font';
-import { bevel, ellipse, hash, px, rng, type Ctx } from './pixel';
+import { bevel, disc, ellipse, hash, line, px, rng, type Ctx } from './pixel';
 
 // ---------- Ground ----------
 
-/** The whole map as one texture: grass, asphalt lane, paved walkways, crossings and flowers. */
+const T = 16;
+
+/**
+ * The whole map as one texture, painted tile by tile from the ground plan: grass, asphalt with
+ * lane lines and crossings, sidewalks with curbs, cobbled plazas, water with foam at the banks,
+ * planked bridge and pier, dirt paths, flower beds.
+ */
 export function paintGround(g: Ctx, w: number, h: number) {
   const r = rng(11);
   const grass = ['#6FA85A', '#7DB866', '#5E9650', '#86C06C'];
   px(g, grass[0], 0, 0, w, h);
   for (let i = 0; i < w * h * 0.12; i++) px(g, grass[1 + ((r() * 3) | 0)], (r() * w) | 0, (r() * h) | 0);
-  // Tufts.
-  for (let i = 0; i < 90; i++) { const x = (r() * w) | 0, y = (r() * h) | 0; px(g, '#4E8446', x, y, 1, 2); px(g, '#9ACB7E', x + 1, y); }
-  // Flower flecks.
+  for (let i = 0; i < (w * h) / 260; i++) { const x = (r() * w) | 0, y = (r() * h) | 0; px(g, '#4E8446', x, y, 1, 2); px(g, '#9ACB7E', x + 1, y); }
   const bloom = ['#FFFFFF', '#F2C14E', '#E8506A', '#B09AE8'];
-  for (let i = 0; i < 70; i++) { const x = (r() * w) | 0, y = (r() * h) | 0; px(g, bloom[(r() * 4) | 0], x, y); }
+  const is = (x: number, y: number, k: G) => groundAt(x, y) === k;
+  const paved = (k: G) => k === G.Walk || k === G.Plaza || k === G.Road || k === G.Bridge || k === G.Deck;
 
-  // Paved walkways between the rows (and in front of Your building).
-  const paved = (x0: number, y0: number, x1: number, y1: number) => {
-    const base = '#D8CDB8', seam = '#B9AE98', light = '#E8DFCB';
-    px(g, base, x0 * 16, y0 * 16, (x1 - x0) * 16, (y1 - y0) * 16);
-    for (let y = y0 * 16; y < y1 * 16; y += 8) px(g, seam, x0 * 16, y, (x1 - x0) * 16, 1);
-    for (let y = y0 * 16, row = 0; y < y1 * 16; y += 8, row++) for (let x = x0 * 16 + (row % 2) * 8; x < x1 * 16; x += 16) px(g, seam, x, y, 1, 8);
-    for (let i = 0; i < (x1 - x0) * (y1 - y0) * 6; i++) px(g, light, x0 * 16 + ((r() * (x1 - x0) * 16) | 0), y0 * 16 + ((r() * (y1 - y0) * 16) | 0));
-    // Curb edge.
-    px(g, '#A89E88', x0 * 16, y1 * 16 - 1, (x1 - x0) * 16, 1);
-  };
-  for (let row = 0; row < 6; row++) paved(1, rowY(row) + 3, 13, rowY(row) + 6);
-  paved(1, 41, 13, 43);
-  paved(3, 37, 11, 38);
-
-  // The lane: asphalt with a dashed center line, running the whole street.
-  const [l0, l1] = TOWN.lane;
-  const lx = l0 * 16, lw = (l1 - l0 + 1) * 16;
-  px(g, '#4E4A56', lx, 16, lw, h - 32);
-  for (let i = 0; i < lw * (h - 32) * 0.05; i++) px(g, '#5C5866', lx + ((r() * lw) | 0), 16 + ((r() * (h - 32)) | 0));
-  for (let i = 0; i < lw * (h - 32) * 0.02; i++) px(g, '#3E3A46', lx + ((r() * lw) | 0), 16 + ((r() * (h - 32)) | 0));
-  for (let y = 24; y < h - 40; y += 12) px(g, '#E8C860', lx + lw / 2 - 1, y, 2, 6);
-  px(g, '#8A8494', lx, 16, 1, h - 32);
-  px(g, '#8A8494', lx + lw - 1, 16, 1, h - 32);
-  // Crosswalks where the lane meets each walkway.
-  for (let row = 0; row < 6; row++) {
-    for (let k = 0; k < 4; k++) px(g, '#EDEDED', lx + 2 + k * 8, (rowY(row) + 3) * 16 + 2, 5, 40);
-  }
-  // Pebble path from the far end of the lane to the margin.
-  for (let x = lx; x < lx + lw; x += 4) px(g, '#5C5866', x, 14, 2, 2);
-
-  // Front-yard flower strips just below each building body (a little color along the facades).
-  for (let row = 0; row < 6; row++) for (const bx of [1, 8]) {
-    const y = (rowY(row) + 3) * 16 - 3;
-    for (let x = bx * 16 + 2; x < (bx + 5) * 16 - 2; x += 5) {
-      px(g, '#4E8446', x, y, 1, 3);
-      px(g, bloom[(hash(`${row}${bx}${x}`) % 3) + 1], x, y - 1, 2, 2);
+  for (let ty = 0; ty < TOWN.d; ty++) for (let tx = 0; tx < TOWN.w; tx++) {
+    const k = groundAt(tx, ty);
+    const x0 = tx * T, y0 = ty * T;
+    const seed = tx * 31 + ty * 17;
+    switch (k) {
+      case G.Grass: case G.Yard: {
+        if (k === G.Yard) px(g, 'rgba(255,255,220,0.08)', x0, y0, T, T);
+        if (seed % 9 === 0) px(g, bloom[seed % 4], x0 + (seed % 13), y0 + ((seed >> 3) % 13), 1, 1);
+        break;
+      }
+      case G.Road: {
+        px(g, '#4E4A56', x0, y0, T, T);
+        for (let i = 0; i < 14; i++) px(g, r() < 0.6 ? '#5C5866' : '#3E3A46', x0 + ((r() * T) | 0), y0 + ((r() * T) | 0));
+        // Lane lines: dashed down the middle of the east-west streets and the avenue.
+        if ((ty === MARKET_ST.y + 1 || ty === ELM_ST.y + 1) && tx % 2 === 0) px(g, '#E8C860', x0 + 2, y0 + 7, 10, 2);
+        if (tx === AVENUE.x + 2 && (ty < MARKET_ST.y || ty > ELM_ST.y + 2) && ty % 2 === 0) px(g, '#E8C860', x0 - 1, y0 + 2, 2, 10);
+        // Zebra crossings where the avenue's sidewalks cross the streets.
+        const street = (ty >= MARKET_ST.y && ty < MARKET_ST.y + 3) || (ty >= ELM_ST.y && ty < ELM_ST.y + 3);
+        if (street && (tx === 20 || tx === 21 || tx === 26 || tx === 27 || tx === 6 || tx === 40)) for (let i = 1; i < T; i += 5) px(g, '#EDEDED', x0 + 2, y0 + i, 12, 3);
+        break;
+      }
+      case G.Walk: {
+        px(g, '#D8CDB8', x0, y0, T, T);
+        px(g, '#B9AE98', x0, y0 + 7, T, 1); px(g, '#B9AE98', x0, y0 + 15, T, 1);
+        px(g, '#B9AE98', x0 + ((ty % 2) ? 4 : 12), y0, 1, 7); px(g, '#B9AE98', x0 + ((ty % 2) ? 12 : 4), y0 + 8, 1, 7);
+        for (let i = 0; i < 4; i++) px(g, '#E8DFCB', x0 + ((r() * T) | 0), y0 + ((r() * T) | 0));
+        break;
+      }
+      case G.Plaza: {
+        // Cobbles: small rounded stones in staggered rows, warmer toward the fountain.
+        const warm = Math.hypot(tx - 23.5, ty - 38) < 6.5 && tx >= SQUARE.x && ty >= SQUARE.y && tx < SQUARE.x + SQUARE.w && ty < SQUARE.y + SQUARE.d;
+        const base = warm ? '#D6C6AC' : '#CFC6B4', seam = warm ? '#B0A086' : '#ACA290', hi = warm ? '#E6D8C2' : '#E2DACA';
+        px(g, base, x0, y0, T, T);
+        for (let row = 0; row < 4; row++) {
+          px(g, seam, x0, y0 + row * 4 + 3, T, 1);
+          for (let c = ((row + ty) % 2) * 2; c < T; c += 4) { px(g, seam, x0 + c, y0 + row * 4, 1, 3); px(g, hi, x0 + c + 1, y0 + row * 4, 2, 1); }
+        }
+        break;
+      }
+      case G.Water: {
+        px(g, '#5EAAD6', x0, y0, T, T);
+        for (let i = 0; i < 3; i++) px(g, '#82C4EA', x0 + ((seed * (i + 3)) % 12), y0 + ((seed >> i) % 14), 4, 1);
+        // Foam and a darker bank where water meets land.
+        if (!is(tx, ty - 1, G.Water)) { px(g, '#3E7A5A', x0, y0, T, 2); px(g, '#CDEBF8', x0, y0 + 2, T, 1); }
+        if (!is(tx, ty + 1, G.Water)) { px(g, '#CDEBF8', x0, y0 + T - 2, T, 1); px(g, '#7A6A4A', x0, y0 + T - 1, T, 1); }
+        if (!is(tx - 1, ty, G.Water)) px(g, '#CDEBF8', x0, y0, 1, T);
+        if (!is(tx + 1, ty, G.Water)) px(g, '#CDEBF8', x0 + T - 1, y0, 1, T);
+        break;
+      }
+      case G.Bridge: case G.Deck: {
+        const wood = k === G.Bridge ? '#A8805A' : '#9A7450';
+        px(g, wood, x0, y0, T, T);
+        for (let y = 0; y < T; y += 4) { px(g, shade(wood, -0.25), x0, y0 + y + 3, T, 1); px(g, shade(wood, 0.12), x0, y0 + y, T, 1); }
+        px(g, shade(wood, -0.3), x0 + ((ty * 5) % T), y0, 1, 3);
+        break;
+      }
+      case G.Path: {
+        px(g, '#C8A878', x0, y0, T, T);
+        for (let i = 0; i < 10; i++) px(g, r() < 0.5 ? '#B8966A' : '#D8BC90', x0 + ((r() * T) | 0), y0 + ((r() * T) | 0));
+        for (let i = 0; i < 3; i++) px(g, '#9A8A70', x0 + ((r() * 14) | 0), y0 + ((r() * 14) | 0), 2, 1);
+        // Grass creeping onto the edges.
+        if (!paved(groundAt(tx, ty - 1)) && !is(tx, ty - 1, G.Path)) for (let i = 0; i < T; i += 3) px(g, '#6FA85A', x0 + i, y0, 2, 1 + (i % 2));
+        if (!paved(groundAt(tx, ty + 1)) && !is(tx, ty + 1, G.Path)) for (let i = 1; i < T; i += 3) px(g, '#6FA85A', x0 + i, y0 + T - 1 - (i % 2), 2, 1 + (i % 2));
+        break;
+      }
+      case G.Bed: {
+        px(g, '#5E4630', x0, y0, T, T);
+        for (let i = 0; i < 6; i++) { const fx = x0 + 1 + ((seed * (i + 2)) % 13), fy = y0 + 1 + ((seed * (i + 5)) % 13); px(g, '#4E8446', fx, fy + 1, 2, 2); px(g, bloom[(seed + i) % 4], fx, fy, 2, 2); }
+        px(g, '#8A6A4A', x0, y0 + T - 1, T, 1);
+        break;
+      }
+      case G.Hedge: px(g, '#3E6A3A', x0, y0, T, T); break;
     }
+    // Curbs: a light edge on the sidewalk side and a dark lip on the road side.
+    if (k === G.Walk || k === G.Plaza) {
+      if (is(tx, ty + 1, G.Road)) { px(g, '#EEE6D6', x0, y0 + T - 2, T, 1); px(g, '#8A8494', x0, y0 + T - 1, T, 1); }
+      if (is(tx, ty - 1, G.Road)) { px(g, '#8A8494', x0, y0, T, 1); px(g, '#EEE6D6', x0, y0 + 1, T, 1); }
+      if (is(tx + 1, ty, G.Road)) px(g, '#8A8494', x0 + T - 1, y0, 1, T);
+      if (is(tx - 1, ty, G.Road)) px(g, '#8A8494', x0, y0, 1, T);
+    }
+  }
+  // Pebbles where paving meets grass, so edges don't look cut with scissors.
+  for (let ty = 0; ty < TOWN.d; ty++) for (let tx = 0; tx < TOWN.w; tx++) {
+    const k = groundAt(tx, ty);
+    if (k !== G.Grass && k !== G.Yard) continue;
+    const x0 = tx * T, y0 = ty * T;
+    if (paved(groundAt(tx, ty - 1))) for (let i = 0; i < 5; i++) px(g, '#BDB2A0', x0 + ((tx * 7 + i * 5) % 15), y0 + (i % 2), 1, 1);
+    if (paved(groundAt(tx, ty + 1))) { px(g, '#4E8446', x0, y0 + T - 1, T, 1); }
   }
 }
 
@@ -144,23 +200,37 @@ function signBoard(k: Ink, text: string, y: number, bg: string, fg: string, edge
   drawText(glow, text, x + Math.round((sw - tw) / 2), y + 2, fg);
 }
 
+const wallKind = (p: Place) => (p.style === 'labs' ? 'glass' : p.style === 'chapel' ? 'stone' : p.style === 'realty' || p.style === 'cafe' ? 'brick' : p.style === 'furniture' || p.style === 'house' ? 'siding' : 'plaster');
+
 /** Paints a building's front (the +z face): returns the color layer and the night-light layer. */
 export function paintFacade(color: Ctx, glow: Ctx, p: Place, W: number, H: number) {
   const k: Ink = { c: color, glow, w: W, h: H };
   const pal = p.palette;
   const cx = Math.round((p.door.x - p.x + 0.5) * 16);
-  const baseY = H - 3;
-  const kind = p.style === 'labs' ? 'glass' : p.style === 'chapel' ? 'stone' : p.style === 'realty' || p.style === 'cafe' ? 'brick' : p.style === 'furniture' ? 'siding' : 'plaster';
-  wallSurface(color, W, H, pal.wall, kind);
+  const ground = H - 3;
+  wallSurface(color, W, H, pal.wall, wallKind(p));
   px(glow, '#000000', 0, 0, W, H);
   // Plinth.
-  px(color, shade(pal.trim, -0.1), 0, baseY, W, 3);
-  px(color, shade(pal.trim, 0.1), 0, baseY, W, 1);
+  px(color, shade(pal.trim, -0.1), 0, ground, W, 3);
+  px(color, shade(pal.trim, 0.1), 0, ground, W, 1);
   // Corner posts.
-  px(color, pal.trim, 0, 0, 2, baseY); px(color, pal.trim, W - 2, 0, 2, baseY);
-  px(color, shade(pal.trim, 0.15), 0, 0, 1, baseY); px(color, shade(pal.trim, -0.15), W - 1, 0, 1, baseY);
+  px(color, pal.trim, 0, 0, 2, ground); px(color, pal.trim, W - 2, 0, 2, ground);
+  px(color, shade(pal.trim, 0.15), 0, 0, 1, ground); px(color, shade(pal.trim, -0.15), W - 1, 0, 1, ground);
   const door_ = shade(pal.trim, -0.05);
   const leftX = 8, rightX = W - 8 - 20;
+  // Shopfronts are drawn for a one-storey front; a taller building gets that front at street
+  // level and a row of upstairs windows above a cornice.
+  const shop = p.style !== 'home' && p.style !== 'house';
+  const off = shop ? Math.max(0, H - 46) : 0;
+  if (off >= 14) {
+    const wh = Math.min(10, off - 6);
+    for (let bx = 10; bx + 10 <= W - 10; bx += 22) windowPane(k, bx, 3, 10, wh, pal.trim, { cross: true });
+  }
+  if (off > 0) {
+    px(color, shade(pal.trim, -0.1), 2, off - 2, W - 4, 2); px(color, shade(pal.trim, 0.15), 2, off - 2, W - 4, 1);
+    color.save(); glow.save(); color.translate(0, off); glow.translate(0, off);
+  }
+  const baseY = H - 3 - off;
 
   switch (p.style) {
     case 'cafe': {
@@ -260,30 +330,54 @@ export function paintFacade(color: Ctx, glow: Ctx, p: Place, W: number, H: numbe
       break;
     }
     case 'home': {
-      // Two floors of windows. The one over the door is yours, so it glows warmest at night.
-      for (let row = 0; row < 2; row++) for (const bx of [8, 24, 54, 70]) {
-        const lit = row === 0 && bx === 24;
-        windowPane(k, bx, 9 + row * 22, 12, 12, pal.trim, { cross: true });
-        if (lit) px(glow, '#FFB860', bx, 9, 12, 12);
-        // Curtains.
-        px(color, lit ? '#E8506A' : '#E8D8C0', bx, 9 + row * 22, 2, 12); px(color, lit ? '#E8506A' : '#E8D8C0', bx + 10, 9 + row * 22, 2, 12);
-      }
+      // Rows of windows across the whole front. The one nearest the door is yours, so it glows
+      // warmest at night.
+      const rows = H >= 64 ? [9, 31] : [9];
+      const xs: number[] = [];
+      for (let bx = 10; bx + 12 <= W - 10; bx += 18) if (bx + 12 < cx - 14 || bx > cx + 14) xs.push(bx);
+      const mine = xs.reduce((a, b) => (Math.abs(b + 6 - cx) < Math.abs(a + 6 - cx) ? b : a), xs[0]);
+      rows.forEach((wy, row) => {
+        for (const bx of xs) {
+          const lit = row === 0 && bx === mine;
+          windowPane(k, bx, wy, 12, 12, pal.trim, { cross: true });
+          if (lit) px(glow, '#FFB860', bx, wy, 12, 12);
+          px(color, lit ? '#E8506A' : '#E8D8C0', bx, wy, 2, 12); px(color, lit ? '#E8506A' : '#E8D8C0', bx + 10, wy, 2, 12);
+        }
+      });
+      // Balconies on the upper row.
+      if (rows.length > 1) for (const bx of xs) { px(color, shade(pal.trim, -0.25), bx - 2, 22, 16, 2); for (let i = 0; i < 16; i += 3) px(color, shade(pal.trim, -0.25), bx - 2 + i, 18, 1, 4); px(color, shade(pal.trim, -0.25), bx - 2, 18, 16, 1); }
       px(color, shade(pal.trim, -0.1), cx - 16, baseY - 28, 32, 3);
       drawText(color, 'HOME', cx - Math.round(textWidth('HOME') / 2), baseY - 26, pal.accent);
       door(k, cx, baseY, '#7A5A42', pal.trim);
       px(color, pal.accent, cx - 9, baseY - 24, 18, 1);
+      // A little canopy over the entrance.
+      striped(color, cx - 12, baseY - 31, 24, 3, [pal.accent, '#FFF2D0']);
+      break;
+    }
+    case 'house': {
+      // A neighbour's cottage: shuttered windows with flower boxes and a porch light.
+      for (const bx of [10, W - 26]) {
+        windowPane(k, bx, 14, 16, 12, pal.trim, { cross: true });
+        px(color, pal.accent === '#FFFFFF' ? shade(pal.trim, -0.1) : pal.accent, bx - 5, 13, 4, 14); px(color, pal.accent === '#FFFFFF' ? shade(pal.trim, -0.1) : pal.accent, bx + 17, 13, 4, 14);
+        px(color, shade(pal.accent, -0.3), bx - 4, 16, 2, 1); px(color, shade(pal.accent, -0.3), bx + 18, 16, 2, 1);
+        px(color, '#7A5A3A', bx - 1, 27, 18, 3);
+        for (let i = 0; i < 18; i += 2) { px(color, '#5E9650', bx - 1 + i, 25, 1, 2); px(color, ['#E8506A', '#F2C14E', '#FFFFFF', '#B09AE8'][(i / 2 + bx) % 4 | 0], bx - 1 + i, 24 + (i % 4 ? 0 : 1), 2, 2); }
+      }
+      door(k, cx, baseY, shade(pal.trim, -0.15), pal.trim);
+      px(color, '#3A3A46', cx + 8, baseY - 20, 3, 4); px(color, '#FFE9B0', cx + 8, baseY - 19, 3, 2); px(glow, '#FFD98A', cx + 7, baseY - 21, 5, 6);
+      px(color, '#E8DCC0', cx - 4, baseY - 26, 8, 3); px(color, shade(pal.trim, -0.3), cx - 2, baseY - 25, 4, 1);
       break;
     }
     case 'cart': case 'park': break;
   }
+  if (off > 0) { color.restore(); glow.restore(); }
   bevel(color, 0, 0, W, H, shade(pal.wall, 0.08), shade(pal.wall, -0.2));
 }
 
 /** The +x face (visible from the camera): a plain wall with a window or two. */
 export function paintSide(color: Ctx, glow: Ctx, p: Place, W: number, H: number) {
   const pal = p.palette;
-  const kind = p.style === 'labs' ? 'glass' : p.style === 'chapel' ? 'stone' : p.style === 'realty' || p.style === 'cafe' ? 'brick' : p.style === 'furniture' ? 'siding' : 'plaster';
-  wallSurface(color, W, H, pal.wall, kind);
+  wallSurface(color, W, H, pal.wall, wallKind(p));
   px(glow, '#000000', 0, 0, W, H);
   px(color, shade(pal.trim, -0.1), 0, H - 3, W, 3);
   px(color, pal.trim, 0, 0, 2, H - 3); px(color, pal.trim, W - 2, 0, 2, H - 3);
@@ -326,6 +420,123 @@ export function paintTree(g: Ctx, w: number, h: number, seed: number) {
   px(g, '#2A5A34', (w >> 1) - 6, 22, 12, 1);
 }
 
+/** A tall evergreen: stacked tiers of needles, darker underneath. */
+export function paintPine(g: Ctx, w: number, h: number, seed: number) {
+  const r = rng(seed + 50);
+  const hue = [['#2A5A3E', '#3A7A4E', '#5A9E62'], ['#244E3A', '#34704A', '#4E925A']][seed % 2];
+  px(g, '#5A3E2A', (w >> 1) - 1, h - 7, 3, 7); px(g, '#7A5638', (w >> 1) - 1, h - 7, 1, 7);
+  const tiers = 4;
+  for (let i = 0; i < tiers; i++) {
+    const top = 2 + i * ((h - 10) / tiers), bot = top + (h - 10) / tiers + 4, half = 3 + i * ((w / 2 - 4) / (tiers - 1));
+    for (let y = Math.round(top); y < bot; y++) {
+      const t = (y - top) / (bot - top), hw = Math.round(1 + t * half);
+      px(g, hue[0], (w >> 1) - hw, y, hw * 2 + 1, 1);
+      px(g, hue[1], (w >> 1) - hw, y, Math.max(1, hw), 1);
+      if (y === Math.round(bot) - 1) px(g, '#1E3E2C', (w >> 1) - hw + 1, y, hw * 2 - 1, 1);
+    }
+  }
+  for (let i = 0; i < 14; i++) px(g, hue[2], (w >> 1) - 4 + ((r() * 7) | 0), 4 + ((r() * (h - 14)) | 0));
+  px(g, '#E8F0F0', (w >> 1), 1, 1, 1);
+}
+
+/** A weeping willow: a round crown with long strands hanging to the ground. */
+export function paintWillow(g: Ctx, w: number, h: number, seed: number) {
+  const r = rng(seed + 90);
+  px(g, '#6A4A32', (w >> 1) - 1, h - 12, 3, 12); px(g, '#8A6244', (w >> 1) - 1, h - 12, 1, 12);
+  ellipse(g, '#4E8A3A', w >> 1, 11, (w >> 1) - 2, 9);
+  ellipse(g, '#6EAE4C', (w >> 1) - 1, 9, (w >> 1) - 5, 6);
+  for (let x = 3; x < w - 3; x += 2) {
+    const len = 10 + ((r() * (h - 26)) | 0);
+    px(g, x % 4 ? '#5E9E44' : '#4E8A3A', x, 14, 1, len);
+    px(g, '#96D26C', x, 14 + ((r() * len) | 0), 1, 1);
+  }
+}
+
+/** A round shrub, sometimes in flower. */
+export function paintBush(g: Ctx, w: number, h: number, seed: number) {
+  const r = rng(seed + 7);
+  ellipse(g, '#3E7A3E', w >> 1, h - 6, (w >> 1) - 1, 5);
+  ellipse(g, '#58A04E', (w >> 1) - 1, h - 7, (w >> 1) - 3, 3);
+  const bloom = seed % 3 === 0 ? '#F29AB8' : seed % 3 === 1 ? '#FFFFFF' : null;
+  for (let i = 0; i < 10; i++) px(g, bloom && i % 2 ? bloom : '#7FC468', 2 + ((r() * (w - 4)) | 0), h - 10 + ((r() * 7) | 0));
+}
+
+/** A little round sign on a post: a street name, a bus stop, a direction. */
+export function paintSign(g: Ctx, w: number, h: number, text: string, bg = '#3E6A4A', fg = '#F2E8D0') {
+  const tw = textWidth(text);
+  const sw = Math.min(w, tw + 6);
+  const x = (w - sw) >> 1;
+  px(g, shade(bg, -0.35), x, 0, sw, 9);
+  px(g, bg, x + 1, 1, sw - 2, 7);
+  drawText(g, text, x + ((sw - tw) >> 1), 2, fg);
+  px(g, '#3A3A46', (w >> 1) - 1, 9, 2, h - 9);
+}
+
+/** The notice board in the square: pinned notes. */
+export function paintBoard(g: Ctx, w: number, h: number) {
+  px(g, '#5E4630', 0, 0, w, h);
+  px(g, '#B8946A', 2, 2, w - 4, h - 4);
+  const r = rng(4);
+  const notes = ['#FFF2D0', '#F2C6D0', '#C8E0F0', '#E8F0C0'];
+  for (let i = 0; i < 6; i++) {
+    const nx = 4 + ((i % 3) * ((w - 8) / 3)) | 0, ny = 4 + (i > 2 ? (h - 8) / 2 : 0) | 0;
+    px(g, notes[i % 4], nx, ny, 7, 6);
+    for (let l = 0; l < 2; l++) px(g, '#8A7A6A', nx + 1, ny + 2 + l * 2, 3 + ((r() * 3) | 0), 1);
+    px(g, '#E8506A', nx + 3, ny, 1, 1);
+  }
+}
+
+/** A clock face with the given time. */
+export function paintClock(g: Ctx, w: number, h: number, hour: number, minute: number) {
+  const c = w / 2;
+  disc(g, '#3A2A22', c, c, c);
+  disc(g, '#FFF6E0', c, c, c - 2);
+  for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; px(g, '#6A5A4A', Math.round(c + Math.sin(a) * (c - 4)) - (i % 3 ? 0 : 0), Math.round(c - Math.cos(a) * (c - 4)), 1, 1); }
+  const hand = (a: number, len: number, col: string) => line(g, col, Math.round(c), Math.round(c), Math.round(c + Math.sin(a) * len), Math.round(c - Math.cos(a) * len));
+  hand(((hour % 12) + minute / 60) / 12 * Math.PI * 2, c * 0.45, '#2A2A36');
+  hand((minute / 60) * Math.PI * 2, c * 0.7, '#2A2A36');
+  px(g, '#C8553D', Math.round(c), Math.round(c), 1, 1);
+  void h;
+}
+
+/** Pennant flags on a string, for the square. */
+export function paintBunting(g: Ctx, w: number, h: number, seed: number) {
+  const cols = ['#E8506A', '#F2C14E', '#7FB070', '#6CB8E0', '#B09AE8', '#FFF2D0'];
+  for (let x = 0; x < w; x++) px(g, '#6A5A4A', x, Math.round(1 + Math.sin((x / w) * Math.PI) * 3), 1, 1);
+  for (let x = 2, i = seed; x < w - 6; x += 9, i++) {
+    const y0 = Math.round(2 + Math.sin(((x + 3) / w) * Math.PI) * 3);
+    for (let j = 0; j < 6; j++) px(g, cols[i % cols.length], x + (j >> 1), y0 + j, 6 - (j >> 1) * 2, 1);
+  }
+  void h;
+}
+
+/** A duck seen from the front-ish side. */
+export function paintDuck(g: Ctx, w: number, h: number) {
+  ellipse(g, '#F2F0E8', 6, h - 4, 5, 3);
+  disc(g, '#3E7A4E', 9, h - 9, 2);
+  px(g, '#F2C14E', 11, h - 9, 2, 1);
+  px(g, '#1E1E2A', 9, h - 10, 1, 1);
+  px(g, '#C8C4B8', 2, h - 3, 7, 1);
+  void w;
+}
+
+/** Fruit, bread, flowers or crafts heaped on a market stall's counter. */
+export function paintGoods(g: Ctx, w: number, h: number, kind: string) {
+  const r = rng(hash(kind));
+  const sets: Record<string, string[]> = {
+    fruit: ['#E8506A', '#F2C14E', '#7FB070', '#F28A3A'],
+    bread: ['#D8A060', '#C08040', '#E8C890', '#A86A3A'],
+    flowers: ['#F29AB8', '#FFFFFF', '#B09AE8', '#F2C14E'],
+    crafts: ['#6CB8E0', '#C8553D', '#E8D8B0', '#7A5A9A'],
+  };
+  const cols = sets[kind] ?? sets.crafts;
+  for (let i = 0; i < 4; i++) {
+    const bx = 1 + i * ((w - 2) / 4);
+    px(g, '#8A6A4A', bx, h - 4, (w - 2) / 4 - 1, 4);
+    for (let j = 0; j < 7; j++) px(g, cols[(i + j) % cols.length], bx + ((r() * ((w - 2) / 4 - 3)) | 0), h - 4 - ((r() * 4) | 0), 2, 2);
+  }
+}
+
 export function paintGlow(g: Ctx, w: number, h: number) {
   const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -350,6 +561,5 @@ export function paintStone(g: Ctx, w: number, h: number) {
   px(g, shade(base, 0.12), 0, 0, w, 1);
 }
 
-export function lampPositions() { return LAMPS; }
 
 export { mix };

@@ -354,3 +354,11 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 18px; border: 0; bo
 .areatag .pill { pointer-events: auto; }
 .wholebtn { position: absolute; left: 12px; top: calc(var(--safe-t) + 62px); z-index: 6; gap: 6px; font-size: .8em; }
 .wholebtn[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+.mapbtn { position: absolute; right: 12px; top: calc(var(--safe-t) + 108px); z-index: 6; gap: 6px; font-size: .8em; }
+.townmap { display: flex; gap: 12px; align-items: flex-start; }
+.townmap canvas { width: 46%; max-width: 220px; image-rendering: pixelated; border-radius: 6px; border: 2px solid var(--line, rgba(0,0,0,.2)); flex: none; cursor: pointer; }
+.district-banner { position: absolute; left: 0; right: 0; top: calc(var(--safe-t) + 104px); z-index: 7; display: flex; flex-direction: column; align-items: center; pointer-events: none; animation: banner-in 2.8s ease forwards; }
+.district-banner b { font-size: 1.15em; letter-spacing: .04em; padding: 4px 14px; background: var(--panel, rgba(255,255,255,.9)); border-radius: 6px; box-shadow: 0 2px 0 rgba(0,0,0,.18); }
+.district-banner span { margin-top: 4px; font-size: .72em; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.45); color: #fff; }
+@keyframes banner-in { 0% { opacity: 0; transform: translateY(-6px); } 12% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .district-banner { animation-duration: .01s; animation-delay: 2.6s; animation-fill-mode: both; animation-name: banner-out; } @keyframes banner-out { from { opacity: 1; } to { opacity: 0; } } }

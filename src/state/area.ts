@@ -15,9 +15,9 @@ export const inside = (placeId: string): AreaId => `in:${placeId}`;
 
 export function areaName(id: AreaId): string {
   if (id === 'home') return 'Home';
-  if (id === 'town') return 'Maple Street';
+  if (id === 'town') return 'Maple Town';
   const p = PLACE_BY_ID[insideOf(id) ?? ''];
-  return p ? p.name : 'Maple Street';
+  return p ? p.name : 'Maple Town';
 }
 
 /** Which shop sheet is open, and the item or piece to show first (tapped on a display). */

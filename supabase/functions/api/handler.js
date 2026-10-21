@@ -1210,7 +1210,7 @@ function setStyle(c, style) {
 }
 function moveHome(c, id) {
   const next = nextHome(c.w.couple.home);
-  if (!next) throw new RuleError("You already live in the biggest home on Maple Street.");
+  if (!next) throw new RuleError("You already live in the biggest home in Maple Town.");
   if (id !== next.id) throw new RuleError(`The next home for you is the ${next.name}.`);
   spend(c, next.price, `home:${next.id}`);
   c.w.couple.home = next.id;

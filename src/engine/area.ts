@@ -35,6 +35,8 @@ export interface AreaEvents {
   tapNpc(id: string, at: ScreenPoint): void;
   walked(from: Tile, path: Tile[]): void;
   tapEmpty(): void;
+  /** You walked into a named part of the map (the town's districts). */
+  district?(d: { name: string; blurb: string }): void;
 }
 
 export interface Npc {
@@ -50,6 +52,9 @@ export interface Npc {
 }
 
 const SPEED = 3.2;
+/** Long trips across town turn into a jog, on both phones (the speed follows the path length). */
+const JOG = 5.6;
+export const paceFor = (steps: number) => (steps > 22 ? JOG : SPEED);
 
 export abstract class AreaScene {
   readonly scene = new THREE.Scene();
@@ -86,7 +91,7 @@ export abstract class AreaScene {
     protected readonly L: FloorPlan,
     looks: { me: AvatarLook; partner: AvatarLook },
     protected readonly events: AreaEvents,
-    protected readonly view: { pitch: number; fitW: number },
+    protected readonly view: { pitch: number; fitW: number; yaw?: number },
     spawn: Tile,
   ) {
     this.theme = THEMES[themeKey];
@@ -213,7 +218,7 @@ export abstract class AreaScene {
     const start = this.blocked.has(key(this.me.tile.x, this.me.tile.y)) ? nearestFree(this.me.tile, this.blocked, this.L) ?? this.me.tile : this.me.tile;
     const path = findPath(start, t, this.blocked, this.L);
     if (!path || !path.length) return;
-    this.me.speed = SPEED;
+    this.me.speed = paceFor(path.length);
     this.me.walk(path);
     this.events.walked(this.me.tile, path);
   }
@@ -226,7 +231,7 @@ export abstract class AreaScene {
     if (here.x === at.x && here.y === at.y && !this.me.walking) { use(); return; }
     const path = findPath(here, at, this.blocked, this.L);
     if (!path) return;
-    this.me.speed = SPEED;
+    this.me.speed = paceFor(path.length);
     this.me.walk(path, use);
     this.events.walked(here, path);
   }
@@ -248,7 +253,7 @@ export abstract class AreaScene {
 
   remoteWalk(from: Tile, path: Tile[]) {
     if (Math.abs(this.partner.tile.x - from.x) + Math.abs(this.partner.tile.y - from.y) > 1) this.partner.place(from);
-    this.partner.speed = SPEED;
+    this.partner.speed = paceFor(path.length);
     this.partner.walk(path);
   }
 
@@ -271,7 +276,9 @@ export abstract class AreaScene {
     const first = n.epoch < 0;
     n.epoch = epoch;
     const pick = (e: number) => n.route[Math.floor(rngAt(n.seed, e) * n.route.length)];
-    const from = first ? pick(epoch - 1) : n.at;
+    // Start from where they actually are: if the last stroll ran long, a route from their last
+    // stop would have them cut straight across buildings to catch up.
+    const from = first ? pick(epoch - 1) : n.actor.walking ? n.actor.nextTile ?? n.actor.tile : n.actor.tile;
     const to = pick(epoch);
     n.at = to;
     const path = findPath(from, to, this.blocked, this.L);
@@ -286,7 +293,13 @@ export abstract class AreaScene {
       }
       return;
     }
-    if (path && path.length) n.actor.walk(path);
+    if (path && path.length) n.actor.walk(n.actor.walking && n.actor.nextTile ? [n.actor.nextTile, ...path] : path);
+  }
+
+  /** Where someone (or something) you can talk to is, for the speech bubble; null if they're not here. */
+  protected talkAt(id: string): THREE.Vector3 | null {
+    const n = this.npcs.find((q) => q.id === id);
+    return n && n.actor.group.visible ? n.actor.head() : null;
   }
 
   // ---------- Input ----------
@@ -327,12 +340,13 @@ export abstract class AreaScene {
 
   protected tap(sx: number, sy: number) {
     this.setRay(sx, sy);
-    const actors: THREE.Object3D[] = [this.partner.sprite, ...this.npcs.map((n) => n.actor.sprite)];
+    const actors: THREE.Object3D[] = [this.partner.sprite, ...this.npcs.filter((n) => n.actor.group.visible).map((n) => n.actor.sprite)];
     const hits = this.ray.intersectObjects([...actors, ...this.pickables], true);
     for (const h of hits) {
       if (h.object === this.partner.sprite) { if (this.partnerHere) { this.events.tapPartner(this.screenOf(this.partner.head())); return; } continue; }
       const npc = h.object.userData.npc as string | undefined;
-      if (npc) { const n = this.npcs.find((q) => q.id === npc); if (n) { this.events.tapNpc(npc, this.screenOf(n.actor.head())); return; } }
+      const head = npc ? this.talkAt(npc) : null;
+      if (npc && head) { this.events.tapNpc(npc, this.screenOf(head)); return; }
       const id = h.object.userData.hotspot as string | undefined;
       const hs = id ? this.hotspots.get(id) : undefined;
       if (hs) { this.goTo(hs); return; }

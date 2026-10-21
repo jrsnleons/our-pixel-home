@@ -17,6 +17,30 @@ const FACING_VIEW: Record<Facing, { back: boolean; flip: boolean }> = {
   '-z': { back: true, flip: true },
 };
 
+/** Seen straight on (the town's front camera), walking left or right shows a face, not a back. */
+const FRONT_VIEW: Record<Facing, { back: boolean; flip: boolean }> = {
+  '+z': { back: false, flip: false },
+  '+x': { back: false, flip: true },
+  '-x': { back: false, flip: false },
+  '-z': { back: true, flip: true },
+};
+
+const facingView = () => (Math.abs(view.yaw) < 0.2 ? FRONT_VIEW : FACING_VIEW);
+
+/**
+ * Sprites are flat sheets standing in a 3D room, so a wall right beside someone can cut through
+ * the sheet. Drawing them a little nearer the camera (depth only: same spot on screen, same
+ * shadow) keeps whole people in front of walls they're standing next to.
+ */
+const DEPTH_NUDGE = 0.25;
+function nudgeDepth(mat: THREE.Material) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include project_vertex', `#include project_vertex
+      gl_Position = projectionMatrix * (mvPosition + vec4(0.0, 0.0, ${DEPTH_NUDGE.toFixed(2)}, 0.0));`);
+  };
+  mat.customProgramCacheKey = () => 'sprite-depth-nudge';
+}
+
 export function facingTowards(from: { x: number; z: number }, to: { x: number; z: number }): Facing {
   const dx = to.x - from.x, dz = to.z - from.z;
   if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? '+x' : '-x';
@@ -39,6 +63,8 @@ export class Actor {
   tile: Tile;
   pos = new THREE.Vector3();
   facing: Facing = '+z';
+  /** Keep facing where they were put (someone fishing off the pier), even with their back to us. */
+  holdFacing = false;
   private path: Tile[] = [];
   private onArrive: (() => void) | null = null;
   speed = 2.4; // tiles per second
@@ -73,6 +99,7 @@ export class Actor {
     geo.translate(0, FH / (2 * PPU) - 1 / PPU, 0);
     // A little self-light keeps faces readable when the lamp is behind them at night.
     this.mat = new THREE.MeshLambertMaterial({ map: this.atlas, emissiveMap: this.atlas, emissive: '#FFFFFF', emissiveIntensity: 0.32, alphaTest: 0.5, side: THREE.DoubleSide });
+    nudgeDepth(this.mat);
     this.sprite = new THREE.Mesh(geo, this.mat);
     this.sprite.castShadow = true;
     this.sprite.userData.actor = this;
@@ -104,12 +131,32 @@ export class Actor {
 
   get walking() { return this.path.length > 0; }
 
+  /** The tile this person is stepping onto, if they're walking. */
+  get nextTile(): Tile | null { return this.path[0] ?? null; }
+
   walk(path: Tile[], onArrive?: () => void) {
     this.stand();
-    this.path = path.slice();
+    this.path = this.fromHere(path);
     this.onArrive = onArrive ?? null;
     if (!path.length) this.onArrive?.();
     if (!path.length) this.onArrive = null;
+  }
+
+  /**
+   * A new path starts at a tile next to the one we last stood on. If we're between two tiles,
+   * cutting straight to that first step would go diagonally (through a wall corner), so finish
+   * the step we're on, or step back, and only then follow the path along the grid.
+   */
+  private fromHere(path: Tile[]): Tile[] {
+    const out = path.slice();
+    const heading = this.path[0];
+    const w = tileToWorld(this.tile);
+    const between = Math.hypot(this.pos.x - w.x, this.pos.z - w.z) > 0.02;
+    if (!between || !heading) return out;
+    const at = out.findIndex((t) => t.x === heading.x && t.y === heading.y);
+    if (at === 0) return out;
+    if (at > 0) return out.slice(at);
+    return [{ ...this.tile }, ...out];
   }
 
   /** Stand on something this high (a display plinth) without walking anywhere. */
@@ -170,7 +217,7 @@ export class Actor {
 
   private setFrame(name: string) {
     const i = FRAME_INDEX[name] ?? 0;
-    const v = FACING_VIEW[this.lying ? '+z' : this.facing];
+    const v = facingView()[this.lying ? '+z' : this.facing];
     this.atlas.offset.set(i / this.cols, v.back ? 0 : 0.5);
     this.sprite.scale.x = v.flip ? -1 : 1;
   }
@@ -200,7 +247,7 @@ export class Actor {
     // idle seconds people turn to face the room (the front view of the same diagonal).
     if (!this.path.length && !this.override && this.elevTarget === 0 && !this.lying) {
       this.idleFor += dt;
-      if (this.idleFor > 3.5 && FACING_VIEW[this.facing].back) this.facing = this.facing === '-x' ? '+z' : '+x';
+      if (this.idleFor > 3.5 && !this.holdFacing && facingView()[this.facing].back) this.facing = this.facing === '-x' ? '+z' : '+x';
     } else this.idleFor = 0;
 
     const anim = this.override ?? (this.path.length ? WALK : IDLE);

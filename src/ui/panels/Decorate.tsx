@@ -161,7 +161,7 @@ export function Decorate({ scene, onClose, bind }: { scene: HomeScene; onClose: 
                 ) : <div class="slot empty" />)}
               </div>
               <div class="row" style={{ justifyContent: 'space-between', marginTop: '6px' }}>
-                <span class="tiny muted">Tap an item in the room to move, turn or store it. More furniture is at Maple Furnishings on Maple Street.</span>
+                <span class="tiny muted">Tap an item in the room to move, turn or store it. More furniture is at Maple Furnishings on Market Street.</span>
               </div>
             </>
           )}

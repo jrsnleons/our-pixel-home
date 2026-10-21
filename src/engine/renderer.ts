@@ -61,6 +61,10 @@ const LADDER: QualityLevel[] = [
   { dpr: 1, shadow: 512, bloom: false, tilt: false, effects: false },
 ];
 
+/** The rooms' three-quarter view, and how long that direction is on the ground. */
+const DIAGONAL = Math.atan2(0.62, 0.78);
+const FLAT = Math.hypot(0.62, 0.78);
+
 function storageGet(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } }
 function storageSet(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
 
@@ -138,15 +142,18 @@ export class Renderer {
   }
 
   /** Draw a different scene (the town, a shop) with the same camera and post stack. */
-  attach(scene: THREE.Scene, opts: { pitch?: number; fitW?: number } = {}) {
+  attach(scene: THREE.Scene, opts: { pitch?: number; fitW?: number; yaw?: number } = {}) {
     this.active = scene;
     this.renderPass.scene = scene;
-    this.setView(opts.pitch ?? 0.66, opts.fitW ?? 10.6);
+    this.setView(opts.pitch ?? 0.66, opts.fitW ?? 10.6, opts.yaw);
   }
 
-  /** Camera height (how steeply it looks down) and how much of the world fits across the screen. */
-  setView(pitch: number, fitW: number) {
-    this.camDir.set(0.62, pitch, 0.78).normalize();
+  /**
+   * Camera height (how steeply it looks down), how much of the world fits across the screen, and
+   * which way it faces: the room's diagonal by default, 0 for the straight-on Octopath view.
+   */
+  setView(pitch: number, fitW: number, yaw = DIAGONAL) {
+    this.camDir.set(Math.sin(yaw) * FLAT, pitch, Math.cos(yaw) * FLAT).normalize();
     view.yaw = Math.atan2(this.camDir.x, this.camDir.z);
     this.fitW = fitW;
     this.resize(this.w, this.h);

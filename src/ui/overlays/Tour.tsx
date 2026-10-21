@@ -24,7 +24,7 @@ const STEPS: Step[] = [
   { target: 'coins', title: 'Coins and quests', text: () => 'You both earn coins into one wallet. The star shows starter quests, the first things to do together.' },
   { target: 'decorate', title: 'Decorate', text: () => 'Place, turn and move furniture around your room.' },
   { target: 'notes', title: 'Notes', text: () => 'Shared notebooks, prayer requests, and your own quiet time with the Lord.' },
-  { target: 'door', title: 'The front door', text: () => 'Tap it to head out to Maple Street: your first real bed is at Maple Furnishings, clothes are at The Boutique, and the café and other jobs are down the road.' },
+  { target: 'door', title: 'The front door', text: () => 'Tap it to head out to Maple Town: your first real bed is at Maple Furnishings and clothes are at The Boutique on Market Street, and the café and other jobs are round the square. Tap Map to find your way.' },
 ];
 
 interface Box { x: number; y: number; w: number; h: number }

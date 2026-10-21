@@ -30,6 +30,7 @@ import { Notes, type NotesTab } from '../panels/Notes';
 import { Me } from '../panels/Me';
 import { Bakery } from '../panels/Bakery';
 import { Realty } from '../panels/Realty';
+import { TownMap } from '../panels/TownMap';
 import { Shop } from '../panels/Shop';
 import { boutiqueEntries, furnitureEntries } from '../shopstock';
 import { savedShift, Work } from '../panels/Work';
@@ -51,6 +52,13 @@ export function Home() {
   const [scene, setScene] = useState<HomeScene | null>(null);
   const [bubble, setBubble] = useState<Bubble>(null);
   const [whole, setWhole] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [district, setDistrict] = useState<{ name: string; blurb: string; k: number } | null>(null);
+  useEffect(() => {
+    if (!district) return;
+    const t = setTimeout(() => setDistrict(null), 2900);
+    return () => clearTimeout(t);
+  }, [district?.k]);
   const [wheel, setWheel] = useState(false);
   const [game, setGame] = useState<{ id: string | null; kind: GameKind } | null>(null);
   const [invite, setInvite] = useState<{ kind: GameKind | 'shift'; ref?: string; job?: JobKey } | null>(null);
@@ -126,6 +134,7 @@ export function Home() {
     tapPartner: (at) => uiRef.current.partner(at),
     walked: (from, path) => backend.send({ t: 'walk', from, path }),
     tapEmpty: () => { setTalk(null); setBubble(null); },
+    district: (d) => setDistrict({ ...d, k: Date.now() }),
   };
   const looksNow = () => { const st = snap.value!; return { me: st.me.look, partner: st.partner?.look ?? st.me.look }; };
   const lockedPlaces = () => new Set(Object.values(PLACE_BY_ID).filter((p) => p.jobs && p.jobs.every((j) => jobLock(snap.value?.me, j))).map((p) => p.id));
@@ -168,7 +177,7 @@ export function Home() {
     const a = areas.current;
     if (!sc || a.busy || to === area.value) return;
     a.busy = true;
-    setBubble(null); setTalk(null); setWheel(false);
+    setBubble(null); setTalk(null); setWheel(false); setMapOpen(false); setDistrict(null);
     setFade(true);
     setTimeout(() => {
       if (area.value === 'home') sc.pause(); else a.active?.pause();
@@ -219,7 +228,7 @@ export function Home() {
       if (p.id === 'park') {
         const together = !!snap.value?.partner && partnerArea.value === 'town';
         here()?.fx.spawn('heart', here()!.me.head(), { count: together ? 4 : 2, spread: 0.5 });
-        toast(together ? `You and ${snap.value!.partner!.name} sit on the bench for a minute.` : `A quiet bench by the fountain.${snap.value?.partner ? ` ${snap.value.partner.name} would like it here.` : ''}`, 'love');
+        toast(together ? `You and ${snap.value!.partner!.name} sit in the gazebo and watch the ducks for a while.` : `A quiet seat in the gazebo by the pond.${snap.value?.partner ? ` ${snap.value.partner.name} would like it here.` : ''}`, 'love');
         return;
       }
       if (INTERIORS[p.id]) {
@@ -232,6 +241,7 @@ export function Home() {
         goRef.current?.(inside(p.id), 'town');
         return;
       }
+      if (p.kind === 'residence') { toast(`${p.note}. Maybe one day they’ll have you over.`, 'info'); return; }
       toast(`${p.name}: ${p.kind === 'soon' ? 'opening soon' : 'not open yet'}.`, 'info');
     },
     npc: (id, at) => {
@@ -484,6 +494,20 @@ export function Home() {
         <button class="pill wholebtn" aria-pressed={whole} onClick={() => { sfx('tap'); scene.setOverview(!whole); setWhole(!whole); }}>
           <Icon name="box" size="s" /><span>{whole ? 'Follow us' : 'Whole home'}</span>
         </button>
+      )}
+
+      {area.value === 'town' && sheet.value == null && !mapOpen && (
+        <button class="pill mapbtn" onClick={() => { sfx('tap'); setTalk(null); setMapOpen(true); }}>
+          <Icon name="map" size="s" /><span>Map</span>
+        </button>
+      )}
+      {district && area.value === 'town' && !mapOpen && (
+        <div class="district-banner" key={district.k}><b>{district.name}</b><span>{district.blurb}</span></div>
+      )}
+      {mapOpen && areas.current.town && (
+        <TownMap me={areas.current.town.me.tile} partnerAt={areas.current.town.partnerHere ? areas.current.town.partner.tile : null} partnerName={partner.value?.name}
+          onClose={() => setMapOpen(false)}
+          onGo={(id) => { setMapOpen(false); sfx('tap'); areas.current.town?.travel(id); }} />
       )}
 
       {bubble?.kind === 'furniture' && scene && (
