@@ -7,8 +7,8 @@ import type { Piece } from '../../data/clothes';
 import { INTERACTION_BY_ID } from '../../data/interactions';
 import { slotsUsed } from '../../net/rules';
 import { act, coins, prefs, sheet, snap, storeTab } from '../../state/store';
+import { ItemThumb } from '../ItemThumb';
 import { Coin, Icon, Sheet, Tabs } from '../kit';
-import { thumb } from '../thumbs';
 import { BoutiqueTab, PieceDetail } from './Boutique';
 import { pendingPlace } from './Decorate';
 
@@ -39,7 +39,7 @@ export function Store({ onClose }: { onClose: () => void }) {
           return (
             <button class={`card ${have ? 'owned' : ''}`} onClick={() => { sfx('tap'); setSel(i); }}>
               {i.tier != null && i.kind !== 'style' && <span class="tag">{TIER[i.tier]}</span>}
-              <div class="thumb">{thumb(i.key, theme) ? <img src={thumb(i.key, theme)} alt="" loading="lazy" /> : <Icon name={i.key === 'up_slots' ? 'box' : 'sparkle'} size="l" />}</div>
+              <div class="thumb"><ItemThumb item={i.key} theme={theme} fallback={<Icon name={i.key === 'up_slots' ? 'box' : 'sparkle'} size="l" />} /></div>
               <span class="name">{i.name}</span>
               <span class="price">{have ? 'Owned' : <Coin n={i.price} />}</span>
             </button>
@@ -75,7 +75,7 @@ function Detail({ def, onBack, onClose, owned }: { def: ItemDef; onBack: () => v
   return (
     <Sheet title={def.name} onClose={onClose} size="tall" head={<button class="btn ghost small icon" onClick={onBack} aria-label="Back"><Icon name="back" size="s" /></button>}>
       <div class="detail">
-        <div class="thumb pbox soft">{thumb(def.key, theme) ? <img src={thumb(def.key, theme)} alt="" /> : <Icon name="sparkle" size="l" />}</div>
+        <div class="thumb pbox soft"><ItemThumb item={def.key} theme={theme} fallback={<Icon name="sparkle" size="l" />} /></div>
         <div class="col" style={{ gap: '6px' }}>
           <p style={{ margin: 0, fontFamily: 'var(--read-font), system-ui, sans-serif', fontSize: '15px', lineHeight: 1.35 }}>{def.blurb}</p>
           {size && <span class="tiny muted">{size}{def.flat ? ', goes under furniture' : ''}</span>}

@@ -10,9 +10,9 @@ import { THEMES } from '../../data/themes';
 import type { HomeScene, PlacingState } from '../../engine/scene';
 import { slotsUsed } from '../../net/rules';
 import type { RoomStyleRow } from '../../net/types';
-import { act, prefs, sheet, snap, toast } from '../../state/store';
+import { act, actOptimistic, prefs, sheet, snap, toast } from '../../state/store';
 import { Icon, Tabs } from '../kit';
-import { thumb } from '../thumbs';
+import { ItemThumb } from '../ItemThumb';
 
 /** Set by the store after a purchase: an inventory id to start placing, or "style:<key>". */
 export const pendingPlace = signal<string | null>(null);
@@ -52,26 +52,48 @@ export function Decorate({ scene, onClose, bind }: { scene: HomeScene; onClose: 
     scene.startPlacing(row.item, { data: row.data });
   };
 
+  // Placing, moving and storing all show in the room at once; the server catches up behind
+  // (the piece breathes until it does) and anything it refuses is put back.
   const confirm = async () => {
-    const st = scene.takePlacing();
+    const inv = placingInv;
+    const tempId = `pending:${Date.now().toString(36)}`;
+    const st = scene.takePlacing(st0()?.placementId ? undefined : tempId);
     if (!st) return;
     setPlacing(null);
-    if (st.placementId) {
-      const ok = await act('move', { pid: st.placementId, surface: st.surface, x: st.x, y: st.y, rot: st.rot });
-      if (!ok) scene.sync(snap.value!.placements);
-    } else if (placingInv) {
-      await act('place', { invId: placingInv, surface: st.surface, x: st.x, y: st.y, rot: st.rot });
-    }
     setPlacingInv(null);
     sfx('place');
+    if (st.placementId) {
+      const pid = st.placementId;
+      const ok = await actOptimistic('move', { pid, surface: st.surface, x: st.x, y: st.y, rot: st.rot },
+        (s) => ({ ...s, placements: s.placements.map((p) => p.id === pid ? { ...p, surface: st.surface, x: st.x, y: st.y, rot: st.rot } : p) }));
+      if (!ok) scene.sync(snap.value!.placements);
+    } else if (inv) {
+      const row = snap.value!.inventory.find((r) => r.id === inv);
+      const ok = await actOptimistic('place', { invId: inv, surface: st.surface, x: st.x, y: st.y, rot: st.rot }, (s) => ({
+        ...s,
+        placements: [...s.placements, { id: tempId, item: st.item, surface: st.surface, x: st.x, y: st.y, rot: st.rot, data: row?.data ?? null }],
+        inventory: s.inventory.flatMap((r) => r.id !== inv ? [r] : r.qty > 1 ? [{ ...r, qty: r.qty - 1 }] : []),
+      }));
+      if (!ok) scene.dropPending(tempId);
+    }
   };
+  const st0 = () => scene.placingState();
 
   const cancel = () => { scene.cancelPlacing(); setPlacingInv(null); sfx('close'); };
 
   const storeSelected = async () => {
     if (!selected) return;
-    const ok = await act('store', { pid: selected.id });
-    if (ok) { sfx('place'); setSelected(null); scene.select(null); }
+    const p = selected;
+    sfx('place'); setSelected(null); scene.select(null);
+    scene.removeNow(p.id);
+    await actOptimistic('store', { pid: p.id }, (s) => {
+      const has = s.inventory.find((r) => r.item === p.item && ITEM_BY_KEY[p.item]?.stacks);
+      return {
+        ...s,
+        placements: s.placements.filter((x) => x.id !== p.id),
+        inventory: has ? s.inventory.map((r) => r === has ? { ...r, qty: r.qty + 1 } : r) : [...s.inventory, { id: `pending:${p.id}`, item: p.item, qty: 1, data: p.data ?? null }],
+      };
+    });
   };
 
   const moveSelected = () => {
@@ -131,8 +153,8 @@ export function Decorate({ scene, onClose, bind }: { scene: HomeScene; onClose: 
               {s.inventory.length === 0 && <p class="small muted" style={{ margin: '0 4px 6px' }}>Your box is empty. Buy something in the Store, or tap an item in the room to move or store it.</p>}
               <div class="slots">
                 {cells.map((c) => c ? (
-                  <button class="slot" aria-selected={placingInv === c.id} onClick={() => startFromBox(c.id)} title={ITEM_BY_KEY[c.item]?.name}>
-                    <img src={thumb(c.item, theme)} alt={ITEM_BY_KEY[c.item]?.name} />
+                  <button class={`slot ${c.id.startsWith('pending:') ? 'pending' : ''}`} disabled={c.id.startsWith('pending:')} aria-selected={placingInv === c.id} onClick={() => startFromBox(c.id)} title={ITEM_BY_KEY[c.item]?.name}>
+                    <ItemThumb item={c.item} theme={theme} alt={ITEM_BY_KEY[c.item]?.name} />
                     {c.qty > 1 && <span class="qty">×{c.qty}</span>}
                   </button>
                 ) : <div class="slot empty" />)}
@@ -172,7 +194,7 @@ function StylePicker({ kind }: { kind: 'wallpaper' | 'floor' }) {
           return (
             <button class="slot" aria-selected={current === i.key} style={{ opacity: have ? 1 : 0.4 }} title={i.name}
               onClick={() => { if (have) void set(kind === 'wallpaper' ? { wallpaper: i.key } : { floor: i.key }); else { toast(`${i.name} is in the Store.`); } }}>
-              <img src={thumb(i.key, theme)} alt={i.name} />
+              <ItemThumb item={i.key} theme={theme} alt={i.name} />
               {!have && <span class="qty"><Icon name="lock" size="s" /></span>}
             </button>
           );

@@ -45,7 +45,7 @@ export interface InteractionPlay {
   b: SettleState;
 }
 
-interface Inst { p: Placement; root: THREE.Group; art: ItemArt | WallArt; wall: boolean }
+interface Inst { p: Placement; root: THREE.Group; art: ItemArt | WallArt; wall: boolean; pending?: boolean; pop?: number; leaving?: number }
 
 type Timer = { at: number; fn: () => void };
 
@@ -163,7 +163,15 @@ export class HomeScene {
   /** Bring the room in line with `placements` (adds, removes and moves instances). */
   sync(placements: Placement[]) {
     const next = new Map(placements.map((p) => [p.id, p]));
-    for (const id of [...this.items.keys()]) if (!next.has(id)) this.removeInst(id);
+    // A piece placed a moment ago under a temporary id: when the server's copy arrives (same
+    // item in the same spot, new id), keep the instance and just take the new id, instead of
+    // throwing it away and building it again.
+    for (const [id, inst] of [...this.items]) {
+      if (!inst.pending || next.has(id)) continue;
+      const real = placements.find((p) => !this.items.has(p.id) && p.item === inst.p.item && p.surface === inst.p.surface && p.x === inst.p.x && p.y === inst.p.y && p.rot === inst.p.rot);
+      if (real) this.rekey(id, real.id);
+    }
+    for (const id of [...this.items.keys()]) if (!next.has(id)) { const inst = this.items.get(id)!; if (inst.pending) continue; this.removeInst(id); }
     for (const p of placements) {
       const cur = this.items.get(p.id);
       if (!cur) this.addInst(p);
@@ -196,6 +204,52 @@ export class HomeScene {
     this.positionInst(inst);
     this.r.scene.add(root);
     if (wall) this.refreshWall(inst);
+  }
+
+  private rekey(from: string, to: string) {
+    const inst = this.items.get(from);
+    if (!inst) return;
+    this.items.delete(from);
+    inst.p = { ...inst.p, id: to };
+    inst.root.userData.placementId = to;
+    inst.root.traverse((o) => { o.userData.placementId = to; });
+    this.setPending(inst, false);
+    this.items.set(to, inst);
+    if (this.selected === from) this.selected = to;
+  }
+
+  /** While the server hasn't confirmed a placement, the piece breathes softly. */
+  private setPending(inst: Inst, on: boolean) {
+    inst.pending = on;
+    inst.root.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (!m) return;
+      for (const mm of Array.isArray(m) ? m : [m]) {
+        if (on) { mm.userData.prev ??= { transparent: mm.transparent, opacity: mm.opacity }; mm.transparent = true; }
+        else if (mm.userData.prev) { mm.transparent = mm.userData.prev.transparent; mm.opacity = mm.userData.prev.opacity; delete mm.userData.prev; mm.needsUpdate = true; }
+      }
+    });
+  }
+
+  /** Take a piece out of the room now (optimistically), shrinking it away with a puff. */
+  removeNow(id: string) {
+    const inst = this.items.get(id);
+    if (!inst) return;
+    const c = new THREE.Box3().setFromObject(inst.root).getCenter(new THREE.Vector3());
+    this.fx.spawn('sparkle', c, { count: 5, spread: 0.45, life: 0.6, rise: 0.5, size: 0.3 });
+    this.items.delete(id);
+    this.placements = this.placements.filter((p) => p.id !== id);
+    inst.leaving = 0;
+    this.leaving.push(inst);
+    if (this.selected === id) this.selected = null;
+    this.paintGrid();
+  }
+  private leaving: Inst[] = [];
+
+  /** The server refused a placement: take the waiting piece back out. */
+  dropPending(id: string) {
+    const inst = this.items.get(id);
+    if (inst?.pending) { this.removeInst(id); this.placements = this.placements.filter((p) => p.id !== id); this.paintGrid(); }
   }
 
   private removeInst(id: string) {
@@ -350,6 +404,18 @@ export class HomeScene {
     const p = this.partner;
     if (!s) { p.stand(); return; }
     this.applySettle(p, s);
+  }
+
+  /** Where my avatar is now, as the partner's phone needs it. */
+  mySettleState(settled: SettleState | null): SettleState {
+    return settled ?? this.settleOf(this.me);
+  }
+
+  /** Put someone back where they were when the app was last open, if that spot still exists. */
+  restoreSettle(who: 'me' | 'partner', s: SettleState): boolean {
+    if (s.pose !== 'stand' && !(s.placementId && this.placements.some((p) => p.id === s.placementId))) return false;
+    this.applySettle(who === 'me' ? this.me : this.partner, s);
+    return true;
   }
 
   private applySettle(a: Actor, s: SettleState) {
@@ -650,7 +716,7 @@ export class HomeScene {
     art.group.traverse((o) => {
       const m = (o as THREE.Mesh).material;
       if (!m) return;
-      for (const mm of Array.isArray(m) ? m : [m]) { mm.transparent = true; mm.opacity = 0.72; mm.depthWrite = true; }
+      for (const mm of Array.isArray(m) ? m : [m]) { mm.userData.ghost ??= { transparent: mm.transparent, opacity: mm.opacity, depthWrite: mm.depthWrite }; mm.transparent = true; mm.opacity = 0.72; mm.depthWrite = true; }
     });
     if (existing) existing.root.visible = false;
     this.r.scene.add(ghost);
@@ -699,10 +765,36 @@ export class HomeScene {
     this.events.placingChanged(null);
   }
 
-  /** Finish placing; the caller persists it. The ghost stays until sync() brings the real item in. */
-  takePlacing(): PlacingState | null {
+  /**
+   * Finish placing; the caller persists it. A new piece stays in the room straight away under
+   * `tempId` (breathing until the server confirms), so there's no wait and no second build.
+   */
+  takePlacing(tempId?: string): PlacingState | null {
     const s = this.placingState();
     if (!s || !s.fit.ok) return null;
+    const pl = this.placing!;
+    if (!s.placementId && tempId) {
+      this.placing = null;
+      const p: Placement = { id: tempId, item: s.item, surface: s.surface, x: s.x, y: s.y, rot: s.rot, data: pl.data ?? null };
+      // The ghost becomes the piece: back to its own opacity, then pending.
+      pl.ghost.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        if (!m) return;
+        for (const mm of Array.isArray(m) ? m : [m]) { const prev = mm.userData.ghost as { transparent: boolean; opacity: number; depthWrite: boolean } | undefined; if (prev) { mm.transparent = prev.transparent; mm.opacity = prev.opacity; mm.depthWrite = prev.depthWrite; delete mm.userData.ghost; mm.needsUpdate = true; } }
+        o.userData.placementId = tempId;
+      });
+      pl.ghost.userData.placementId = tempId;
+      const inst: Inst = { p, root: pl.ghost, art: pl.art, wall: ITEM_BY_KEY[s.item]?.kind === 'wall-item', pop: 0 };
+      this.items.set(tempId, inst);
+      this.placements = [...this.placements, p];
+      this.positionInst(inst);
+      if (inst.wall) this.refreshWall(inst);
+      this.setPending(inst, true);
+      this.refreshLights();
+      this.paintGrid();
+      this.events.placingChanged(null);
+      return s;
+    }
     this.cancelPlacing();
     if (s.placementId) {
       // Show the move immediately (optimistic); the server confirms through sync.
@@ -863,7 +955,28 @@ export class HomeScene {
       this.partner.update(dt);
       this.fx.update(dt);
       this.room.tick(t, dt, this.r.reduceMotion);
-      for (const i of this.items.values()) i.art.tick?.(t);
+      for (const i of this.items.values()) {
+        i.art.tick?.(t);
+        // Just placed: a little pop; waiting on the server: a soft breathing shimmer.
+        if (i.pop != null) {
+          i.pop += dt;
+          const k = Math.min(1, i.pop / 0.28);
+          const sc = k < 1 ? 0.82 + 0.26 * Math.sin(k * Math.PI * 0.75) : 1;
+          i.root.scale.setScalar(sc);
+          if (k >= 1) { i.root.scale.setScalar(1); i.pop = undefined; }
+        }
+        if (i.pending) {
+          const o = 0.62 + 0.3 * (0.5 + 0.5 * Math.sin(t * 7));
+          i.root.traverse((n) => { const m = (n as THREE.Mesh).material; if (m) for (const mm of Array.isArray(m) ? m : [m]) mm.opacity = o * (mm.userData.prev?.opacity ?? 1); });
+        }
+      }
+      for (const i of this.leaving) {
+        i.leaving! += dt;
+        const k = Math.min(1, i.leaving! / 0.22);
+        i.root.scale.setScalar(1 - 0.9 * k);
+        if (k >= 1) { this.r.scene.remove(i.root); dispose(i.root); }
+      }
+      this.leaving = this.leaving.filter((i) => i.leaving! < 0.22);
       // Lamps flicker gently.
       for (const l of this.lights) if (l.userData.base) l.intensity = l.userData.base * (1 + 0.03 * Math.sin(t * 13 + l.id) + 0.02 * Math.sin(t * 7.3));
       this.dayTimer += dt;

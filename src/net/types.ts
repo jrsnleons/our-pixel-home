@@ -170,7 +170,7 @@ export type LiveMsg =
   | { t: 'decor'; placing: { item: string; surface: Surface; x: number; y: number; rot: number } | null };
 
 export type CafeEvent =
-  | { k: 'order'; id: number; drink: string; seat: number }
+  | { k: 'order'; id: number; drink: string; seat: number; mods?: string[] }
   | { k: 'ready'; id: number }
   | { k: 'served'; id: number; ok: boolean }
   | { k: 'end'; served: number; missed: number }
@@ -178,6 +178,8 @@ export type CafeEvent =
   | { k: 'bouquet'; id: number; flowers: string[]; wrap: number; ribbon: number; seat: number }
   | { k: 'stems'; id: number; flowers: string[] }
   // Delivery: where the other bike is, and their streak for the shared combo.
-  | { k: 'ride'; lane: number; crash?: boolean; streak: number };
+  | { k: 'ride'; lane: number; crash?: boolean; streak: number }
+  // Desk jobs: each of you works your own screen; this is your running streak for the combo.
+  | { k: 'desk'; streak: number; served: number };
 
 export interface Presence { userId: string; online: boolean; at: string }

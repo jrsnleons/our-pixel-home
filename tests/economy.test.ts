@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { jobLevel, shiftPayout, daysTogether, milestone, sinceFromDays } from '../src/data/economy';
+import { difficulty, jobLevel, shiftPayout, daysTogether, milestone, sinceFromDays } from '../src/data/economy';
 
 describe('economy', () => {
-  it('pays about 30 solo and 50 each together for a good shift', () => {
-    expect(shiftPayout({ together: false, quality: 1, level: 1, shiftsToday: 0 })).toBe(30);
-    expect(shiftPayout({ together: true, quality: 1, level: 1, shiftsToday: 0 })).toBe(50);
+  it('pays the job’s base solo, 1.6x each together, and more at each level', () => {
+    expect(shiftPayout({ base: 20, together: false, quality: 1, level: 1, shiftsToday: 0 })).toBe(20);
+    expect(shiftPayout({ base: 20, together: true, quality: 1, level: 1, shiftsToday: 0 })).toBe(32);
+    expect(shiftPayout({ base: 20, together: false, quality: 1, level: 10, shiftsToday: 0 })).toBe(47);
   });
-  it('softly diminishes after ten shifts a day', () => {
-    const fresh = shiftPayout({ together: false, quality: 1, level: 1, shiftsToday: 3 });
-    const tired = shiftPayout({ together: false, quality: 1, level: 1, shiftsToday: 12 });
+  it('scales difficulty from level 1 to 10', () => {
+    expect(difficulty(1)).toBe(0);
+    expect(difficulty(10)).toBe(1);
+    expect(difficulty(5)).toBeCloseTo(4 / 9);
+  });
+  it('softly diminishes after twelve shifts a day', () => {
+    const fresh = shiftPayout({ base: 20, together: false, quality: 1, level: 1, shiftsToday: 3 });
+    const tired = shiftPayout({ base: 20, together: false, quality: 1, level: 1, shiftsToday: 12 });
     expect(tired).toBeLessThan(fresh);
     expect(tired).toBeGreaterThan(0);
   });

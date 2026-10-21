@@ -9,9 +9,19 @@ import { Icon } from './kit';
 import { Home, deliverLive } from './screens/Home';
 import { Boot, Intro, MakeProfile, Pair, SignIn } from './screens/Onboarding';
 import { applyTheme } from './theme';
+import { beenHere, markBeenHere } from '../state/resume';
+import { unlockAudio } from '../audio/audio';
 
 export function App() {
-  const [entered, setEntered] = useState(false);
+  // After the first visit there's no "tap to come in": the app opens straight back where you
+  // were, and sound unlocks on the first touch instead.
+  const [entered, setEntered] = useState(beenHere);
+  useEffect(() => {
+    if (!entered) return;
+    const unlock = () => unlockAudio();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
 
   useSignalEffect(() => { applyTheme(prefs.value.theme); });
   useSignalEffect(() => { document.documentElement.classList.toggle('easy-read', prefs.value.easyRead); });
@@ -37,7 +47,7 @@ export function App() {
   const p = phase.value;
   return (
     <div class="stage">
-      {p === 'boot' || !entered ? <Boot onEnter={() => setEntered(true)} />
+      {p === 'boot' || !entered ? <Boot ready={entered} onEnter={() => { markBeenHere(); setEntered(true); }} />
         : p === 'signin' ? (prefs.value.hints.intro ? <SignIn /> : <Intro onDone={() => setPrefs({ hints: { ...prefs.value.hints, intro: true } })} />)
         : p === 'profile' ? <MakeProfile suggested={suggestedName.value} />
         : p === 'pair' ? <Pair onDone={() => { markFeedSeen(); phase.value = 'home'; }} />

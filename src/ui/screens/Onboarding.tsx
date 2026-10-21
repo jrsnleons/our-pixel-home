@@ -10,12 +10,13 @@ import { AvatarEditor, AvatarPreview } from '../AvatarEditor';
 import { BootArt } from '../BootArt';
 import { Field, Icon } from '../kit';
 
-export function Boot({ onEnter }: { onEnter: () => void }) {
+/** The title screen. The first time it waits for a tap; after that it's only the loading screen. */
+export function Boot({ onEnter, ready }: { onEnter: () => void; ready?: boolean }) {
   return (
-    <div class="screen boot" onClick={() => { unlockAudio(); sfx('open'); onEnter(); }}>
+    <div class="screen boot" onClick={() => { if (ready) return; unlockAudio(); sfx('open'); onEnter(); }}>
       <BootArt />
       <div class="title-logo">Our Pixel<br />Home</div>
-      <p class="blink" style={{ color: '#fff', textShadow: '2px 2px 0 var(--outline)' }}>Tap to come in</p>
+      <p class="blink" style={{ color: '#fff', textShadow: '2px 2px 0 var(--outline)' }}>{ready ? 'Coming home…' : 'Tap to come in'}</p>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 // Me: your look, the two of you (dates, cities), and settings (theme, effects, sound).
 
 import { useState } from 'preact/hooks';
+import { updateNow, updateReady } from '../../state/pwa';
+import { InstallRow } from '../overlays/Install';
 import { setSfx, sfx } from '../../audio/audio';
 import { ESV_NOTICE } from '../../data/bible';
 import { THEME_ORDER, THEMES } from '../../data/themes';
@@ -102,6 +104,8 @@ function Settings() {
         })}
       </div>
       <div class="hr" />
+      <InstallRow />
+      {updateReady.value && <button class="btn soft small" onClick={updateNow}><Icon name="sparkle" size="s" />A new version is ready · Update now</button>}
       <Toggle label="HD-2D effects" hint="Glow, depth blur and color. Turn off on older phones." on={p.effects} set={(v) => setPrefs({ effects: v })} />
       <Toggle label="Battery saver" hint="Runs the room at 30 frames a second." on={p.battery} set={(v) => setPrefs({ battery: v })} />
       <Toggle label="Easy-read text" hint="Notes, prayers and Bible passages in your phone’s normal font." on={p.easyRead} set={(v) => setPrefs({ easyRead: v })} />

@@ -48,4 +48,9 @@ if (section === 'pick') {
     row(p.key, [avatarPreview(look('guy', 0), 'idle', 'front', scale), avatarPreview(look('girl', 1), 'idle', 'front', scale), avatarPreview(look('guy', 0), 'idle', 'back', scale), avatarPreview(look('girl', 0), 'sit', 'front', scale)]);
   }
 }
+if (section === 'faces') {
+  const looks: AvatarLook[] = HAIR_STYLES.map((hair, i) => ({ ...DEFAULT_LOOK, body: i % 2 ? 'girl' : 'guy', hair, hairColor: i % 8, skin: i % 6, eyes: i % 4, wear: randomWear(i) }));
+  row('faces', looks.slice(0, 6).map((l) => avatarPreview(l, 'idle', 'front', 4)));
+  row('expr', ['idle', 'blink', 'wave1', 'surprised', 'kiss', 'laugh1'].map((f) => avatarPreview(looks[1], f, 'front', 4)));
+}
 (window as unknown as { __ready: boolean }).__ready = true;

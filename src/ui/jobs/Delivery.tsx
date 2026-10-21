@@ -1,6 +1,6 @@
 // Bike delivery down Maple Street. You ride up the screen; tap left or right to change lanes.
-// Dodge puddles, cones and cats, and ride past the mailbox that matches your parcel on its side
-// of the street to drop it in. Together, you both ride the same street (it's drawn from the
+// Dodge puddles, cones and cats, and ride past the one mailbox with its flag up, in the lane on
+// its side of the street, to drop the parcel in. Higher levels ride faster on busier streets. Together, you both ride the same street (it's drawn from the
 // shift id), each in your own lane, and deliveries you both keep up build a shared combo.
 
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -9,6 +9,7 @@ import type { AvatarLook } from '../../engine/art/avatar';
 import { dither, hash, rng } from '../../engine/art/pixel';
 import type { CafeEvent } from '../../net/types';
 import { backend, partner, snap } from '../../state/store';
+import { difficulty } from '../../data/economy';
 import { avatarSprite, SHIFT_SECONDS, sendShift, ShiftHud, useShiftEvents, type ShiftProps } from './common';
 
 const W = 96, H = 128;
@@ -42,7 +43,8 @@ class Street {
   private nextObs = 150;
   private lastLane: 0 | 1 = 0;
   private n = 1;
-  constructor(seed: number) { this.r = rng(seed); }
+  /** 0..1 from the job level: more obstacles, closer together. */
+  constructor(seed: number, private hard = 0) { this.r = rng(seed); }
   /** Lay down street up to `upTo` pixels from the start. */
   grow(upTo: number) {
     const r = this.r;
@@ -66,7 +68,8 @@ class Street {
       const roll = r();
       const kind = roll < 0.45 ? 'puddle' : roll < 0.75 ? 'cone' : 'cat';
       this.obs.push({ id: this.n++, kind, lane, at: this.nextObs, fur: FURS[Math.floor(r() * FURS.length)], dir: lane ? -1 : 1 });
-      this.nextObs += (lane === this.lastLane ? 46 : 58) + Math.floor(r() * 50) + Math.max(0, 40 - this.nextObs / 120);
+      const gap = (lane === this.lastLane ? 46 : 60) + Math.floor(r() * 50) + Math.max(0, 40 - this.nextObs / 120);
+      this.nextObs += Math.round(gap * (1.15 - 0.4 * this.hard));
       this.lastLane = lane;
     }
   }
@@ -181,7 +184,7 @@ export function streetThumb(): HTMLCanvasElement {
   return c;
 }
 
-function drawStreet(g: CanvasRenderingContext2D, st: Street, dist: number, t: number, parcel: number | null) {
+function drawStreet(g: CanvasRenderingContext2D, st: Street, dist: number, t: number, target: number | null) {
   g.imageSmoothingEnabled = false;
   const sy = (at: number) => BIKE_Y - (at - dist);
   // Asphalt, center dashes and curbs.
@@ -200,7 +203,7 @@ function drawStreet(g: CanvasRenderingContext2D, st: Street, dist: number, t: nu
     g.drawImage(lotArt(l), l.side === 0 ? 0 : 78, Math.round(y0));
   }
   const wave = Math.floor(t * 4) % 2;
-  for (const m of st.mail) { const y = sy(m.at); if (y > -16 && y < H + 4) drawMailbox(g, m.side === 0 ? 19 : 71, y, m, wave, m.color === parcel); }
+  for (const m of st.mail) { const y = sy(m.at); if (y > -16 && y < H + 4) drawMailbox(g, m.side === 0 ? 19 : 71, y, m, wave, m.id === target); }
   for (const o of st.obs) { const y = sy(o.at); if (y > -16 && y < H + 12) drawObstacle(g, o, y, t); }
 }
 
@@ -208,12 +211,13 @@ function drawStreet(g: CanvasRenderingContext2D, st: Street, dist: number, t: nu
 
 interface Toss { from: [number, number]; to: [number, number]; at: number; color: number }
 
-export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
+export function DeliveryShift({ id, role, level, resume, onEnd, onTick }: ShiftProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const together = role !== 'solo';
+  const hard = difficulty(level);
   const st = useRef({
-    street: new Street(hash(id)), t: 0, dist: 0, lane: (role === 'guest' ? 1 : 0) as 0 | 1, x: LANE_X[role === 'guest' ? 1 : 0],
-    parcel: null as number | null, reload: 0.6, served: 0, missed: 0, streak: 0, crash: 0, safe: 0, tosses: [] as Toss[], puffs: [] as { x: number; y: number; at: number }[],
+    street: new Street(hash(id), hard), t: resume?.t ?? 0, target: null as number | null, dist: 0, lane: (role === 'guest' ? 1 : 0) as 0 | 1, x: LANE_X[role === 'guest' ? 1 : 0],
+    parcel: null as number | null, reload: 0.6, served: resume?.served ?? 0, missed: resume?.missed ?? 0, streak: 0, crash: 0, safe: 0, tosses: [] as Toss[], puffs: [] as { x: number; y: number; at: number }[],
     them: { lane: (role === 'guest' ? 0 : 1) as number, x: LANE_X[role === 'guest' ? 0 : 1], crash: 0, streak: 0 }, combo: 0, best: 0, bot: 2, ended: false,
   });
   const [, force] = useState(0);
@@ -245,19 +249,30 @@ export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
     s.lane = lane; sfx('tap'); send();
   };
 
-  /** The next parcel goes to a mailbox already up the street, so there's always somewhere to take it. */
+  const speedAt = (t: number) => (38 + 26 * hard) + 14 * Math.min(1, t / SHIFT_SECONDS);
+
+  /**
+   * The next parcel goes to one mailbox up the street, far enough ahead to see it coming and
+   * switch lanes (at least a second and a half at the current speed). Only that mailbox has its
+   * flag up, and the lane on its side is cleared just before it so a delivery is never forced
+   * through a cone.
+   */
   const loadParcel = () => {
     const s = st.current;
-    const ahead = s.street.mail.filter((m) => !m.done && m.at > s.dist + 34 && m.at < s.dist + 170);
-    s.parcel = ahead.length ? ahead[Math.floor(Math.random() * ahead.length)].color : Math.floor(Math.random() * MAIL.length);
+    const lead = speedAt(s.t) * 1.6 + 16;
+    const ahead = s.street.mail.filter((m) => !m.done && m.at > s.dist + lead && m.at < s.dist + lead + 120);
+    if (!ahead.length) { s.reload = 0.3; return; }
+    const m = ahead[Math.floor(Math.random() * Math.min(2, ahead.length))];
+    s.target = m.id; s.parcel = m.color;
+    s.street.obs = s.street.obs.filter((o) => !(o.lane === m.side && o.at > m.at - 30 && o.at < m.at + 6));
   };
 
-  const lose = (crash: boolean) => {
+  /** A crash costs time and the streak, not the parcel. */
+  const bump = () => {
     const s = st.current;
-    if (s.parcel != null) { s.missed++; s.parcel = null; s.reload = 0.9; }
     s.streak = 0;
     sfx('error');
-    send(crash);
+    send(true);
   };
 
   useEffect(() => {
@@ -268,7 +283,7 @@ export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
       const dt = Math.min(0.1, (now - last) / 1000); last = now;
       const s = st.current;
       s.t += dt;
-      const speed = 34 + 26 * Math.min(1, s.t / 150);
+      const speed = speedAt(s.t);
       const before = s.dist;
       s.dist += speed * dt * (s.crash && s.t - s.crash < 0.7 ? 0.45 : 1);
       s.street.grow(s.dist + 200);
@@ -277,35 +292,38 @@ export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
       s.them.x += (LANE_X[s.them.lane] - s.them.x) * Math.min(1, dt * 16);
       if (s.parcel == null && s.reload > 0) { s.reload -= dt; if (s.reload <= 0) loadParcel(); }
 
-      // Mailboxes passing the bike: the right side of the street gets the parcel.
+      // The flagged mailbox passing the bike: drop the parcel if you're in its lane. The check
+      // uses the lane you're steering into, so a late switch still counts.
       for (const m of s.street.mail) {
-        if (m.done || !(m.at > before && m.at <= s.dist) || s.parcel !== m.color) continue;
+        if (m.done || m.id !== s.target || !(m.at > before - 2 && m.at <= s.dist + 2)) continue;
+        m.done = true;
         if (m.side === s.lane) {
-          m.done = true; s.served++; s.streak++;
+          s.served++; s.streak++;
           s.tosses.push({ from: [s.x, BIKE_Y - 12], to: [m.side === 0 ? 22 : 74, BIKE_Y - 10], at: s.t, color: m.color });
-          s.parcel = null; s.reload = 0.5;
-          sfx('coin'); send();
+          sfx('coin');
         } else {
           s.puffs.push({ x: m.side === 0 ? 22 : 74, y: BIKE_Y - 8, at: s.t });
-          lose(false);
+          s.missed++; s.streak = 0; sfx('error');
         }
+        s.parcel = null; s.target = null; s.reload = 0.5;
+        send();
       }
       // Cats wander across when the bike gets close.
       for (const o of s.street.obs) {
         if (o.kind !== 'cat') continue;
         const ahead = o.at - s.dist;
         if (o.hit) { o.x = (o.x ?? LANE_X[o.lane]) + (o.dir ?? 1) * 40 * dt; continue; }
-        if (ahead < 95 && ahead > -10) o.x = Math.max(ROAD[0] + 4, Math.min(ROAD[1] - 4, (o.x ?? (o.dir === 1 ? ROAD[0] + 4 : ROAD[1] - 4)) + (o.dir ?? 1) * 9 * dt));
+        if (ahead < 95 && ahead > -10) o.x = Math.max(ROAD[0] + 4, Math.min(ROAD[1] - 4, (o.x ?? (o.dir === 1 ? ROAD[0] + 4 : ROAD[1] - 4)) + (o.dir ?? 1) * (7 + 6 * hard) * dt));
         else if (o.x == null) o.x = o.dir === 1 ? ROAD[0] + 4 : ROAD[1] - 4;
       }
       // Bumps.
       if (s.t > s.safe) for (const o of s.street.obs) {
         if (o.hit) continue;
         const dy = o.at - s.dist, ox = o.x ?? LANE_X[o.lane];
-        if (dy > -4 && dy < 5 && Math.abs(ox - s.x) < (o.kind === 'puddle' ? 8 : 6)) {
+        if (dy > -3 && dy < 4 && Math.abs(ox - s.x) < (o.kind === 'puddle' ? 7 : 5)) {
           o.hit = s.t; s.crash = s.t; s.safe = s.t + 1;
           if (o.kind === 'cat') o.dir = ox < s.x ? -1 : 1;
-          lose(true);
+          bump();
         }
       }
       // Preview: the pretend partner keeps riding and delivering.
@@ -323,6 +341,7 @@ export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
       if (combo > s.combo && combo >= 2) sfx('heart');
       s.combo = combo; s.best = Math.max(s.best, combo);
       if (s.t >= SHIFT_SECONDS) { finish(); return; }
+      onTick?.({ t: s.t, served: s.served, missed: s.missed });
       draw();
       raf = requestAnimationFrame(loop);
     };
@@ -336,7 +355,7 @@ export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
     if (!c) return;
     const g = c.getContext('2d')!;
     const s = st.current;
-    drawStreet(g, s.street, s.dist, s.t, s.parcel);
+    drawStreet(g, s.street, s.dist, s.t, s.target);
     const pedal = Math.floor(s.dist / 6) % 2 * 4;
     const wob = (since: number) => (since > 0 && s.t - since < 0.7 ? Math.sin((s.t - since) * 40) * 2 : 0);
     if (together) {
@@ -370,6 +389,7 @@ export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
   const s = st.current;
   const left = Math.max(0, Math.ceil(SHIFT_SECONDS - s.t));
   const M = s.parcel != null ? MAIL[s.parcel] : null;
+  const tgt = s.target != null ? s.street.mail.find((m) => m.id === s.target) : undefined;
   return (
     <div class="col">
       <ShiftHud label={role === 'solo' ? 'Solo' : role === 'host' ? 'You: left lane' : 'You: right lane'} served={s.served} missed={s.missed} left={left}>
@@ -379,14 +399,14 @@ export function DeliveryShift({ id, role, onEnd }: ShiftProps) {
         <canvas ref={canvas} width={W} height={H} onPointerDown={tapCanvas as never} />
       </div>
       <div class="row" style={{ justifyContent: 'center' }}>
-        <span class="chip parcel">{M ? <><i style={{ background: M.c }} />Parcel for a {M.name} mailbox</> : 'Grabbing the next parcel…'}</span>
+        <span class="chip parcel">{M && tgt ? <><i style={{ background: M.c }} />{tgt.side === 0 ? '◀ ' : ''}{M.name} mailbox on the {tgt.side === 0 ? 'left' : 'right'}{tgt.side === 1 ? ' ▶' : ''}</> : 'Grabbing the next parcel…'}</span>
       </div>
       <div class="row">
         <button class="btn soft grow lane-btn" aria-pressed={s.lane === 0} onPointerDown={() => steer(0)}>◀ Left</button>
         <button class="btn soft grow lane-btn" aria-pressed={s.lane === 1} onPointerDown={() => steer(1)}>Right ▶</button>
       </div>
       <p class="tiny muted center" style={{ margin: 0 }}>
-        Ride on the side of the street where the flag is up to drop your parcel in. Tap either side of the street to switch lanes.
+        Ride in the lane next to the mailbox with its flag up to drop your parcel in. Bumping into things slows you down. Tap either side of the street to switch lanes.
         {together ? ` Keep deliveries going with ${partner.value?.name ?? 'your partner'} for a shared combo.` : ''}
       </p>
     </div>

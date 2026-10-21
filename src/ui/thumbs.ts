@@ -91,3 +91,52 @@ export function thumb(key: string, theme: ThemeKey, data?: Record<string, unknow
 }
 
 export function clearThumbs() { cache.clear(); }
+
+/** The thumbnail if it's already drawn, without drawing it. */
+export function cachedThumb(key: string, theme: ThemeKey, data?: Record<string, unknown> | null): string | undefined {
+  const stage = data && typeof data.water === 'number' ? `|w${Math.min(5, data.water as number)}` : '';
+  return cache.get(`${theme}|${key}${stage}`);
+}
+
+// Drawing a thumbnail takes a few milliseconds of GPU time, so a Store full of them drew all at
+// once froze the screen. They're drawn from a queue instead, a few per frame, newest request
+// first (what's on screen now), while the sheet shows shimmering placeholders.
+interface Job { key: string; theme: ThemeKey; data?: Record<string, unknown> | null; done: ((url: string) => void)[] }
+const queue: Job[] = [];
+let pumping = false;
+
+function pump() {
+  pumping = true;
+  const t0 = performance.now();
+  while (queue.length && performance.now() - t0 < 8) {
+    const j = queue.pop()!;
+    const url = thumb(j.key, j.theme, j.data);
+    for (const d of j.done) d(url);
+  }
+  if (queue.length) requestAnimationFrame(pump);
+  else pumping = false;
+}
+
+/** Draw a thumbnail soon. Resolves with its data URL (empty if it can't be drawn). */
+export function requestThumb(key: string, theme: ThemeKey, data?: Record<string, unknown> | null): Promise<string> {
+  const hit = cachedThumb(key, theme, data);
+  if (hit != null) return Promise.resolve(hit);
+  return new Promise((resolve) => {
+    const same = queue.find((j) => j.key === key && j.theme === theme && JSON.stringify(j.data ?? null) === JSON.stringify(data ?? null));
+    if (same) { same.done.push(resolve); queue.splice(queue.indexOf(same), 1); queue.push(same); }
+    else queue.push({ key, theme, data, done: [resolve] });
+    if (!pumping) requestAnimationFrame(pump);
+  });
+}
+
+/** Warm the cache for items likely to be looked at, when the phone is otherwise idle. */
+export function prewarmThumbs(keys: string[], theme: ThemeKey) {
+  const idle = (window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
+  let i = 0;
+  const step = () => {
+    const t0 = performance.now();
+    while (i < keys.length && performance.now() - t0 < 6) { const k = keys[i++]; if (cachedThumb(k, theme) == null) thumb(k, theme); }
+    if (i < keys.length) idle(step, { timeout: 2000 });
+  };
+  idle(step, { timeout: 2000 });
+}

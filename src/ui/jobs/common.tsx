@@ -12,7 +12,19 @@ import { Icon } from '../kit';
 /** Solo, or which half of a together shift: the host opened it and runs the customers. */
 export type Role = 'solo' | 'host' | 'guest';
 
-export interface ShiftProps { id: string; role: Role; onEnd: (served: number, missed: number) => void }
+/** Where a shift had got to, so a solo shift picks up again after the app is closed mid-way. */
+export interface ShiftProgress { t: number; served: number; missed: number }
+
+export interface ShiftProps {
+  id: string;
+  role: Role;
+  /** The job's level: every mini-game gets harder (and pays more) as it goes up. */
+  level: number;
+  resume?: ShiftProgress;
+  onEnd: (served: number, missed: number) => void;
+  /** Called every frame with the running totals. */
+  onTick?: (p: ShiftProgress) => void;
+}
 
 export const SHIFT_SECONDS = SHIFT.shiftSeconds;
 

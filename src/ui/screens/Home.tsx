@@ -3,24 +3,27 @@
 import { useSignalEffect } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { sfx, startMusic, stopMusic, musicPlaying, setMusicVolume } from '../../audio/audio';
-import { ITEM_BY_KEY } from '../../data/catalog';
+import { ITEM_BY_KEY, ITEMS } from '../../data/catalog';
+import { prewarmThumbs } from '../thumbs';
 import { INTERACTION_BY_ID } from '../../data/interactions';
 import { isJob, JOBS, type JobKey } from '../../data/jobs';
 import { THEMES } from '../../data/themes';
 import type { Placement } from '../../core/grid';
-import { HomeScene, type ScreenPoint } from '../../engine/scene';
+import { HomeScene, type ScreenPoint, type SettleState } from '../../engine/scene';
 import type { LocalBackend } from '../../net/local';
 import type { GameKind, LiveMsg } from '../../net/types';
+import { loadLast, saveLast } from '../../state/resume';
 import { act, backend, coins, couple, day, markFeedSeen, partner, partnerLastSeen, partnerOnline, prefs, sheet, snap, toast, tourReplay, unseen, type Sheet } from '../../state/store';
 import { Coin, Icon } from '../kit';
 import { FurnitureBubble, MeBubble, PartnerBubble } from '../overlays/Bubbles';
 import { Tour } from '../overlays/Tour';
+import { InstallNudge } from '../overlays/Install';
 import { InteractionWheel } from '../overlays/Wheel';
 import { Decorate } from '../panels/Decorate';
 import { Notes, type NotesTab } from '../panels/Notes';
 import { Me } from '../panels/Me';
 import { Store } from '../panels/Store';
-import { Work } from '../panels/Work';
+import { savedShift, Work } from '../panels/Work';
 import { deliverShiftMsg } from '../jobs/common';
 import { OutfitGift, Wardrobe } from '../panels/Wardrobe';
 import { GameSheet } from '../games/GameSheet';
@@ -49,9 +52,14 @@ export function Home() {
   const [celebrate, setCelebrate] = useState<{ label: string; day: string } | null>(null);
   const [tourDoneHere, setTourDoneHere] = useState(() => { try { return localStorage.getItem('oph.tour') === '1'; } catch { return false; } });
 
+  // Where each of us is sitting or lying, if anywhere, for saving and for a partner who joins.
+  const mySettled = useRef<SettleState | null>(null);
+  const partnerSettled = useRef<SettleState | null>(null);
+
   // ---------- create the scene ----------
   useEffect(() => {
     const s0 = snap.value!;
+    const last = loadLast(s0.couple!.id);
     const canvas = document.createElement('canvas');
     host.current!.appendChild(canvas);
     const T = THEMES[prefs.value.theme];
@@ -61,15 +69,19 @@ export function Home() {
       tapPartner: (at) => { if (!snap.value?.partner) return; sfx('tap'); setBubble({ kind: 'partner', at }); },
       tapMe: (at) => { sfx('tap'); setBubble({ kind: 'me', at }); },
       tapEmpty: () => { setBubble(null); },
-      walked: (from, path) => backend.send({ t: 'walk', from, path }),
-      settled: (state) => backend.send({ t: 'settle', state }),
+      walked: (from, path) => { mySettled.current = null; backend.send({ t: 'walk', from, path }); },
+      settled: (state) => { mySettled.current = state; backend.send({ t: 'settle', state }); },
       decorTap: (p) => decorTapRef.current?.(p),
       placingChanged: (s) => placingRef.current?.(s),
     });
     sceneRef = sc;
     sc.sync(s0.placements);
     sc.partner.group.visible = !!s0.partner;
-    sc.placeActors({ x: 3, y: 4 }, { x: 4, y: 4 });
+    // Back where we were when the app was last open (or the middle of the room the first time).
+    sc.placeActors(last?.me.tile ?? { x: 3, y: 4 }, last?.partner?.tile ?? { x: 4, y: 4 });
+    if (last?.me.settle && sc.restoreSettle('me', last.me.settle)) mySettled.current = last.me.settle;
+    if (last?.partner?.settle && sc.restoreSettle('partner', last.partner.settle)) partnerSettled.current = last.partner.settle;
+    backend.send({ t: 'settle', state: sc.mySettleState(mySettled.current) });
     sc.setPartnerOnline(partnerOnline.value);
     const fit = () => { const r = host.current!.getBoundingClientRect(); sc.resize(r.width, r.height); };
     fit();
@@ -77,8 +89,35 @@ export function Home() {
     ro.observe(host.current!);
     sc.start();
     setScene(sc);
+    // Reopen what was open: a solo shift in progress first, otherwise the last sheet.
+    if (savedShift()) sheet.value = 'work';
+    else if (last?.sheet && last.sheet !== 'decorate') sheet.value = last.sheet;
+    if (last?.notesTab) setNotesTab(last.notesTab as NotesTab);
+    // Music needs a tap before the phone lets it play.
+    if (last?.music) {
+      const resumeMusic = () => { if (!musicPlaying()) { startMusic(0); setMusic(true); } };
+      window.addEventListener('pointerdown', resumeMusic, { once: true });
+    }
     return () => { ro.disconnect(); sc.destroy(); canvas.remove(); sceneRef = null; };
   }, []);
+
+  // Save where we are whenever the app is hidden or closed, and every few seconds besides.
+  useEffect(() => {
+    if (!scene) return;
+    const persist = () => saveLast({
+      couple: snap.value!.couple!.id,
+      me: { tile: scene.me.tile, settle: mySettled.current },
+      partner: snap.value?.partner ? { tile: scene.partner.tile, settle: partnerSettled.current } : undefined,
+      sheet: sheet.value, notesTab: notesTabRef.current, music: musicPlaying(),
+    });
+    const hidden = () => { if (document.visibilityState === 'hidden') persist(); };
+    document.addEventListener('visibilitychange', hidden);
+    window.addEventListener('pagehide', persist);
+    const t = setInterval(persist, 4000);
+    return () => { document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pagehide', persist); clearInterval(t); persist(); };
+  }, [scene]);
+  const notesTabRef = useRef(notesTab);
+  notesTabRef.current = notesTab;
 
   const decorTapRef = useRef<((p: Placement | null) => void) | null>(null);
   const placingRef = useRef<((s: ReturnType<HomeScene['placingState']>) => void) | null>(null);
@@ -139,6 +178,9 @@ export function Home() {
     const on = partnerOnline.value;
     if (!scene) return;
     scene.setPartnerOnline(on, { wake: true });
+    if (!on) partnerSettled.current = null;
+    // Tell a partner who just came in where I am, so their phone doesn't show me by the door.
+    if (on) backend.send({ t: 'settle', state: scene.mySettleState(mySettled.current) });
     if (on && (backend as LocalBackend).syncPartnerTile) (backend as LocalBackend).syncPartnerTile(scene.partner.tile);
   });
 
@@ -148,8 +190,8 @@ export function Home() {
     liveHandler = (m: LiveMsg) => {
       const pName = partner.value?.name ?? 'Your partner';
       switch (m.t) {
-        case 'walk': scene.remoteWalk(m.from, m.path); break;
-        case 'settle': scene.remoteSettle(m.state); break;
+        case 'walk': partnerSettled.current = null; scene.remoteWalk(m.from, m.path); break;
+        case 'settle': partnerSettled.current = m.state && m.state.pose !== 'stand' ? m.state : null; scene.remoteSettle(m.state); break;
         case 'interact': {
           scene.playInteraction(m.play, false);
           const d = INTERACTION_BY_ID[m.play.id];
@@ -167,6 +209,18 @@ export function Home() {
     };
     return () => { liveHandler = null; };
   }, [scene]);
+
+  // Draw the box and Store pictures while the phone is idle, so those sheets open instantly.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const s = snap.value;
+      if (!s) return;
+      const owned = s.inventory.map((r) => r.item);
+      const shop = ITEMS.filter((i) => i.kind === 'floor-item' || i.kind === 'wall-item').map((i) => i.key);
+      prewarmThumbs([...new Set([...owned, ...shop])], prefs.value.theme);
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
 
   // Daily visit reward, together-time ticks.
   useEffect(() => {
@@ -313,6 +367,7 @@ export function Home() {
       {askSince && <SinceDate onDone={() => setSinceLater(true)} />}
       {celebrate && <Celebrate label={celebrate.label} day={celebrate.day} onClose={() => setCelebrate(null)} />}
       {showTour && scene && <Tour scene={scene} onDone={finishTour} />}
+      {!showTour && !sheet.value && !game && !askSince && !feedOpen && (s.me.tourDone || tourDoneHere) && <InstallNudge />}
 
       {sheet.value !== 'decorate' && (
         <nav class="bottombar">
