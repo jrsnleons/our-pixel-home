@@ -97,7 +97,7 @@ export function panel(x: number, y: number, z: number, w: number, h: number, p: 
 }
 
 /** The yaw that turns a plane to face the diorama camera. Set by the renderer. */
-export const view = { yaw: Math.atan2(0.62, 0.78) };
+export const view = { yaw: Math.atan2(0.62, 0.78), /** How far upright sprites lean back toward a high camera (0 in rooms and the front view). */ tilt: 0 };
 
 /**
  * A billboard: a vertical sprite that always faces the camera's yaw, standing with its feet at

@@ -1,9 +1,10 @@
 // Speech-bubble menus that pop over furniture, your partner, or yourself.
 
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { sfx, startMusic, stopMusic } from '../../audio/audio';
 import type { Placement } from '../../core/grid';
 import { ITEM_BY_KEY } from '../../data/catalog';
+import type { Hold, HoldMode } from '../../engine/area';
 import type { HomeScene, ScreenPoint } from '../../engine/scene';
 import type { GameKind } from '../../net/types';
 import { act, ago, backend, partner, partnerOnline, toast } from '../../state/store';
@@ -19,11 +20,39 @@ function place(at: ScreenPoint) {
   return { left: `${x}px`, top: `${y}px` };
 }
 
+/**
+ * A bubble belongs to someone or something, so it rides along: walking people, a panning or
+ * zooming camera and a changing view all move it, instead of leaving it hanging where it opened.
+ */
+function useFollow(at: ScreenPoint) {
+  const el = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!at.track) return;
+    let raf = 0;
+    let last = '';
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const p = at.track!();
+      const node = el.current;
+      if (!p || !node || !document.querySelector('.stage')) return;
+      const pos = place(p);
+      const k = pos.left + pos.top;
+      if (k === last) return;
+      last = k;
+      node.style.left = pos.left;
+      node.style.top = pos.top;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [at]);
+  return el;
+}
+
 interface Act { label: string; icon?: string; run: () => void; primary?: boolean }
 
 export function FurnitureBubble(props: {
   p: Placement; at: ScreenPoint; scene: HomeScene; music: boolean;
-  onClose: () => void; onGame: (k: GameKind) => void; onNotes: (tab: NotesTab) => void; onSheet: (k: ItemSheetKind) => void; onMe: () => void; onMusic: (on: boolean) => void;
+  onClose: () => void; onTogether: (id: string) => void; onGame: (k: GameKind) => void; onNotes: (tab: NotesTab) => void; onSheet: (k: ItemSheetKind) => void; onMe: () => void; onMusic: (on: boolean) => void;
 }) {
   const { p, scene } = props;
   const def = ITEM_BY_KEY[p.item]!;
@@ -39,6 +68,10 @@ export function FurnitureBubble(props: {
     const on = scene.isLampOn(p.id);
     acts.push({ label: on ? 'Turn off' : 'Turn on', icon: on ? 'moon' : 'sun', primary: true, run: () => { scene.toggleLamp(p.id); sfx('tap'); backend.send({ t: 'lamp', id: p.id, on: !on }); props.onClose(); } });
   }
+  // Beds and sofas wide enough for two: lie down or sit down together in one tap.
+  const roomForTwo = (def.size?.[0] ?? 1) >= 2 && !!partner.value && p.surface === 'floor';
+  if (roomForTwo && def.category === 'bed') acts.push({ label: 'Sleep together', icon: 'heart', primary: true, run: () => { props.onClose(); props.onTogether('nap_together'); } });
+  else if (roomForTwo && def.category === 'seating') acts.push({ label: 'Sit together', icon: 'heart', primary: true, run: () => { props.onClose(); props.onTogether('sit_together'); } });
   for (const a of def.actions ?? []) {
     switch (a) {
       case 'sit': acts.push({ label: 'Sit', run: use('sit') }); break;
@@ -73,8 +106,9 @@ export function FurnitureBubble(props: {
     }
   }
 
+  const follow = useFollow(props.at);
   return (
-    <div class="bubble" style={place(props.at)} onClick={(e) => e.stopPropagation()}>
+    <div class="bubble" ref={follow} style={place(props.at)} onClick={(e) => e.stopPropagation()}>
       <span class="title">{def.name}</span>
       {step === 'main' ? (
         acts.length ? acts.map((a) => (
@@ -94,20 +128,40 @@ export function FurnitureBubble(props: {
   );
 }
 
-export function PartnerBubble(props: { at: ScreenPoint; online: boolean; lastSeen: string | null; name: string; onHeart: () => void; onWheel: () => void; onClose: () => void }) {
+export function PartnerBubble(props: {
+  at: ScreenPoint; online: boolean; lastSeen: string | null; name: string; onHeart: () => void; onWheel: () => void; onClose: () => void;
+  /** Out in town or a shop (not home): hold hands instead of the Together wheel. */
+  inArea?: boolean; holding?: boolean; onHold?: (mode: HoldMode, leader: Hold['leader']) => void; onLetGo?: () => void;
+}) {
+  const follow = useFollow(props.at);
+  const [step, setStep] = useState<'main' | 'hold'>('main');
   return (
-    <div class="bubble" style={place(props.at)} onClick={(e) => e.stopPropagation()}>
+    <div class="bubble" ref={follow} style={place(props.at)} onClick={(e) => e.stopPropagation()}>
       <span class="title">{props.online ? props.name : `${props.name} · asleep, online ${ago(props.lastSeen)}`}</span>
-      <button class="btn" onClick={props.onHeart}><Icon name="heart" size="s" />Heart</button>
-      <button class="btn soft" onClick={props.onWheel}><Icon name="sparkle" size="s" />Together…</button>
+      {step === 'main' ? (
+        <>
+          <button class="btn" onClick={props.onHeart}><Icon name="heart" size="s" />Heart</button>
+          {!props.inArea && <button class="btn soft" onClick={props.onWheel}><Icon name="sparkle" size="s" />Together…</button>}
+          {props.inArea && props.holding && <button class="btn soft" onClick={props.onLetGo}>Let go</button>}
+          {props.inArea && !props.holding && <button class="btn soft" onClick={() => setStep('hold')}><Icon name="sparkle" size="s" />Hold hands…</button>}
+        </>
+      ) : (
+        <>
+          <button class="btn" onClick={() => props.onHold?.('side', 'either')}>Side by side</button>
+          <button class="btn soft" onClick={() => props.onHold?.('follow', 'me')}>I’ll lead</button>
+          <button class="btn soft" onClick={() => props.onHold?.('follow', 'partner')}>I’ll follow</button>
+          <button class="btn soft" onClick={() => setStep('main')}><Icon name="back" size="s" /></button>
+        </>
+      )}
     </div>
   );
 }
 
 /** A townsperson or shopkeeper says something. */
 export function SayBubble({ at, name, line, onClose }: { at: ScreenPoint; name: string; line: string; onClose: () => void }) {
+  const follow = useFollow(at);
   return (
-    <div class="bubble" style={{ ...place(at), flexDirection: 'column', maxWidth: '72%', width: 'max-content' }} onClick={(e) => { e.stopPropagation(); onClose(); }}>
+    <div class="bubble" ref={follow} style={{ ...place(at), flexDirection: 'column', maxWidth: '72%', width: 'max-content' }} onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <span class="title">{name}</span>
       <span class="small">{line}</span>
     </div>
@@ -115,6 +169,7 @@ export function SayBubble({ at, name, line, onClose }: { at: ScreenPoint; name: 
 }
 
 export function MeBubble({ at, scene, onClose }: { at: ScreenPoint; scene: HomeScene; onClose: () => void }) {
+  const follow = useFollow(at);
   const emote = (frames: string[], fps: number, secs: number, fx?: 'heart' | 'pray' | 'note' | 'sparkle') => () => {
     onClose();
     scene.me.play({ frames, fps });
@@ -122,7 +177,7 @@ export function MeBubble({ at, scene, onClose }: { at: ScreenPoint; scene: HomeS
     setTimeout(() => scene.me.play(null), secs * 1000);
   };
   return (
-    <div class="bubble" style={place(at)} onClick={(e) => e.stopPropagation()}>
+    <div class="bubble" ref={follow} style={place(at)} onClick={(e) => e.stopPropagation()}>
       <span class="title">You</span>
       <button class="btn soft" onClick={emote(['wave1', 'wave2'], 4, 1.6)}>Wave</button>
       <button class="btn soft" onClick={emote(['cheer', 'idle'], 3, 1.6, 'sparkle')}>Cheer</button>

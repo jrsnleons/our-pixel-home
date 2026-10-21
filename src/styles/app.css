@@ -357,6 +357,8 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 18px; border: 0; bo
 .wholebtn { position: absolute; left: 12px; top: calc(var(--safe-t) + 62px); z-index: 6; gap: 6px; font-size: .8em; }
 .wholebtn[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
 .mapbtn { position: absolute; right: 12px; top: calc(var(--safe-t) + 108px); z-index: 6; gap: 6px; font-size: .8em; }
+.townbtn { position: absolute; right: 12px; z-index: 6; gap: 6px; font-size: .8em; }
+.holdchip { position: absolute; left: 12px; top: calc(var(--safe-t) + 108px); z-index: 6; gap: 6px; font-size: .8em; align-items: center; }
 .townmap { display: flex; gap: 12px; align-items: flex-start; }
 .townmap canvas { width: 46%; max-width: 220px; image-rendering: pixelated; border-radius: 6px; border: 2px solid var(--line, rgba(0,0,0,.2)); flex: none; cursor: pointer; }
 .district-banner { position: absolute; left: 0; right: 0; top: calc(var(--safe-t) + 104px); z-index: 7; display: flex; flex-direction: column; align-items: center; pointer-events: none; animation: banner-in 2.8s ease forwards; }

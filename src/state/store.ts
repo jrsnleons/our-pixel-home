@@ -21,12 +21,16 @@ export interface Prefs {
   music: number;
   /** Long text and Bible passages in the phone's own fonts instead of pixel. */
   easyRead: boolean;
+  /** The town's camera: straight on, or high above. */
+  townView: 'front' | 'top';
+  /** Town weather: follow the calendar, or pick one. */
+  weather: 'auto' | 'clear' | 'rain' | 'snow' | 'mist';
   /** Seen the first-run hints. */
   hints: Record<string, boolean>;
 }
 
 const PREFS_KEY = 'oph.prefs';
-const defaults: Prefs = { theme: 'honey', effects: true, battery: false, sfx: true, music: 0.5, easyRead: false, hints: {} };
+const defaults: Prefs = { theme: 'honey', effects: true, battery: false, sfx: true, music: 0.5, easyRead: false, townView: 'front', weather: 'auto', hints: {} };
 
 function loadPrefs(): Prefs {
   try { return { ...defaults, ...(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<Prefs>) }; } catch { return { ...defaults }; }

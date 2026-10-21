@@ -26,6 +26,9 @@ export interface InteractionDef {
   away: string;
 }
 
+/** Beds wide enough for two. */
+export const DOUBLE_BEDS = ['bed_futon', 'bed_wood', 'bed_quilted', 'bed_canopy'];
+
 export const INTERACTIONS: InteractionDef[] = [
   // Affection
   { id: 'hug', label: 'Hug', category: 'affection', arrange: 'face', a: ['hug'], b: ['hug'], fps: 2, seconds: 3, lean: 0.28, fx: [{ kind: 'heart', on: 'between', every: 0.7 }], away: 'gave you a big hug' },
@@ -53,7 +56,7 @@ export const INTERACTIONS: InteractionDef[] = [
 
   // Cozy
   { id: 'sit_together', label: 'Sit together', category: 'cozy', arrange: 'seat', a: ['sitHappy'], b: ['sitHappy'], fps: 1, seconds: 0, needs: { items: ['seat_loveseat', 'seat_sofa', 'bed_futon', 'bed_wood', 'bed_quilted', 'bed_canopy', 'window_seat'] }, away: 'sat down with you' },
-  { id: 'nap_together', label: 'Nap together', category: 'cozy', arrange: 'bed', a: ['lie'], b: ['lie'], fps: 1, seconds: 0, fx: [{ kind: 'zzz', on: 'both', every: 1.4 }], needs: { items: ['bed_canopy'] }, away: 'took a nap with you' },
+  { id: 'nap_together', label: 'Sleep together', category: 'cozy', arrange: 'bed', a: ['lie'], b: ['lie'], fps: 1, seconds: 0, fx: [{ kind: 'zzz', on: 'both', every: 1.4 }], needs: { items: DOUBLE_BEDS }, away: 'lay down next to you' },
   { id: 'feed_snack', label: 'Feed a snack', category: 'cozy', arrange: 'face', a: ['feed'], b: ['eat', 'laugh1'], fps: 2, seconds: 2.4, lean: 0.12, fx: [{ kind: 'crumb', on: 'b', every: 0.3 }], away: 'shared a snack with you' },
   { id: 'umbrella', label: 'Share an umbrella', category: 'cozy', arrange: 'side', a: ['umbrella'], b: ['holdL'], fps: 1, seconds: 5, lean: 0.14, special: 'umbrella', needs: { theme: 'cabin' }, away: 'shared an umbrella with you' },
 
@@ -72,7 +75,7 @@ export const CATEGORY_LABEL: Record<Category, string> = { affection: 'Affection'
 export function lockedReason(i: InteractionDef, ctx: { placedItems: Set<string>; theme: ThemeKey; day: number; questsDone: boolean }): string | null {
   const n = i.needs;
   if (!n) return null;
-  if (n.items && !n.items.some((k) => ctx.placedItems.has(k))) return n.items.includes('bed_canopy') && n.items.length === 1 ? 'Needs the canopy bed' : n.items.some((k) => k.startsWith('seat_')) && !n.items.some((k) => k.startsWith('bed_')) ? 'Needs a loveseat or sofa' : 'Needs a sofa or bed';
+  if (n.items && !n.items.some((k) => ctx.placedItems.has(k))) return n.items === DOUBLE_BEDS ? 'Needs a double bed' : n.items.some((k) => k.startsWith('seat_')) && !n.items.some((k) => k.startsWith('bed_')) ? 'Needs a loveseat or sofa' : 'Needs a sofa or bed';
   if (n.theme && n.theme !== ctx.theme) return 'Only in Rainy Cabin';
   if (n.day && ctx.day < n.day) return `Unlocks on day ${n.day}`;
   if (n.quests && !ctx.questsDone) return 'Finish the starter quests';

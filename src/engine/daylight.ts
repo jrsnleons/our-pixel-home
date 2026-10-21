@@ -3,6 +3,7 @@
 
 import { mix } from '../core/color';
 import type { Theme } from '../data/themes';
+import type { WeatherKind } from '../data/weather';
 
 export interface Daylight {
   hour: number;
@@ -31,7 +32,9 @@ const KEYS: Key[] = [
   { h: 24, sky: ['#0B1030', '#16204A', '#26306A'], sun: '#8FA2FF', sunPower: 0.45, ambient: 0.45, shaft: 0.02, stars: 1 },
 ];
 
-export function daylight(date: Date, T: Theme): Daylight {
+/** `weather` overrides the theme's own (the town has real weather; a window in the cabin is always rainy). */
+export function daylight(date: Date, T: Theme, weather?: WeatherKind): Daylight {
+  const wet = weather ? weather === 'rain' || weather === 'snow' : T.weather === 'rain';
   const hour = date.getHours() + date.getMinutes() / 60;
   let i = 0;
   while (i < KEYS.length - 2 && KEYS[i + 1].h <= hour) i++;
@@ -41,8 +44,8 @@ export function daylight(date: Date, T: Theme): Daylight {
   let sky: [string, string, string] = [m(a.sky[0], b.sky[0]), m(a.sky[1], b.sky[1]), m(a.sky[2], b.sky[2])];
   let stars = a.stars + (b.stars - a.stars) * t;
   let sunPower = a.sunPower + (b.sunPower - a.sunPower) * t;
-  if (T.weather === 'rain') {
-    sky = sky.map((c) => mix(c, '#5A6E7A', 0.6)) as [string, string, string];
+  if (wet) {
+    sky = sky.map((c) => mix(c, weather === 'snow' ? '#7A8694' : '#5A6E7A', 0.6)) as [string, string, string];
     stars = 0;
     sunPower *= 0.6;
   }
@@ -57,9 +60,9 @@ export function daylight(date: Date, T: Theme): Daylight {
     sun: m(a.sun, b.sun),
     sunPower,
     ambientPower: a.ambient + (b.ambient - a.ambient) * t,
-    shaft: (a.shaft + (b.shaft - a.shaft) * t) * (T.weather === 'rain' ? 0.5 : 1),
+    shaft: (a.shaft + (b.shaft - a.shaft) * t) * (wet ? 0.5 : 1),
     lampsOn: hour >= 17.5 || hour < 6.5,
     label,
-    celestial: hour >= 6 && hour < 19.5 ? (T.weather === 'rain' ? null : 'sun') : 'moon',
+    celestial: hour >= 6 && hour < 19.5 ? (wet ? null : 'sun') : 'moon',
   };
 }

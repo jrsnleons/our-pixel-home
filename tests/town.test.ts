@@ -143,3 +143,26 @@ describe('Interiors', () => {
     });
   }
 });
+
+describe('benches', () => {
+  const benches = TOWN_PROPS.filter((q) => q.kind === 'bench');
+  const blocked = townBlocked();
+
+  it('seat two when there is room, and never overlap each other', () => {
+    expect(benches.filter((b) => (b.w ?? 1) * (b.d ?? 1) === 2).length).toBeGreaterThanOrEqual(benches.length - 2);
+    const seen = new Set<string>();
+    for (const b of benches) for (let y = b.y; y < b.y + (b.d ?? 1); y++) for (let x = b.x; x < b.x + (b.w ?? 1); x++) {
+      expect(seen.has(key(x, y)), `bench overlap at ${x},${y}`).toBe(false);
+      seen.add(key(x, y));
+    }
+  });
+
+  it('can be walked up to from somewhere in town', () => {
+    for (const b of benches) {
+      const around = [];
+      for (let y = b.y - 1; y <= b.y + (b.d ?? 1); y++) for (let x = b.x - 1; x <= b.x + (b.w ?? 1); x++) around.push({ x, y });
+      const reachable = around.some((t) => !blocked.has(key(t.x, t.y)) && findPath(TOWN_SPAWN, t, blocked, TOWN_FLOOR) != null);
+      expect(reachable, `bench at ${b.x},${b.y} is boxed in`).toBe(true);
+    }
+  });
+});

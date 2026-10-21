@@ -131,6 +131,9 @@ export class Actor {
 
   get walking() { return this.path.length > 0; }
 
+  /** Sitting (on a bench or a seat), not lying down. */
+  get seated() { return this.elevTarget > 0.01 && !this.lying; }
+
   /** The tile this person is stepping onto, if they're walking. */
   get nextTile(): Tile | null { return this.path[0] ?? null; }
 
@@ -152,7 +155,9 @@ export class Actor {
     const heading = this.path[0];
     const w = tileToWorld(this.tile);
     const between = Math.hypot(this.pos.x - w.x, this.pos.z - w.z) > 0.02;
-    if (!between || !heading) return out;
+    if (!between) return out;
+    // Standing off the tile's centre (just got up from a bench): step back onto the grid first.
+    if (!heading) return out[0] && out[0].x === this.tile.x && out[0].y === this.tile.y ? out : [{ ...this.tile }, ...out];
     const at = out.findIndex((t) => t.x === heading.x && t.y === heading.y);
     if (at === 0) return out;
     if (at > 0) return out.slice(at);
@@ -272,7 +277,7 @@ export class Actor {
       if (this.cover) { this.cover.position.set(0, this.elevation + 0.095, 0); this.cover.rotation.set(0, th, 0); }
       this.blob.visible = false;
     } else {
-      this.sprite.rotation.set(0, view.yaw, this.tilt, 'YXZ');
+      this.sprite.rotation.set(-view.tilt, view.yaw, this.tilt, 'YXZ');
       this.sprite.castShadow = true;
       this.sprite.position.set(0, this.elevation + this.offset.y + hopY, 0);
       this.blob.visible = this.elevation < 0.05;

@@ -523,7 +523,7 @@ var ITEMS = [
   F({ key: "bed_futon", name: "Futon", category: "bed", tier: 1, price: 150, size: [2, 3], actions: ["sleep", "sit"], blurb: "A thick cotton futon on a low slatted base." }),
   F({ key: "bed_wood", name: "Wooden bed", category: "bed", tier: 2, price: 250, size: [2, 3], actions: ["sleep", "sit"], blurb: "A sturdy frame with a heart carved in the headboard." }),
   F({ key: "bed_quilted", name: "Quilted double", category: "bed", tier: 3, price: 900, size: [2, 3], actions: ["sleep", "sit"], unlocks: ["cuddle"], blurb: "Two pillows, a hand-stitched quilt, room for both of you." }),
-  F({ key: "bed_canopy", name: "Canopy bed", category: "bed", tier: 4, price: 2200, size: [2, 3], actions: ["sleep", "sit"], unlocks: ["cuddle", "nap_together"], blurb: "Draped posts and soft curtains. Unlocks napping together." }),
+  F({ key: "bed_canopy", name: "Canopy bed", category: "bed", tier: 4, price: 2200, size: [2, 3], actions: ["sleep", "sit"], unlocks: ["cuddle", "nap_together"], blurb: "Draped posts and soft curtains. Room for two to sleep." }),
   // Tables
   F({ key: "table_box", name: "Cardboard box", category: "table", tier: 0, price: 30, size: [1, 1], blurb: "It held your stuff on moving day. Now it holds your tea." }),
   F({ key: "table_folding", name: "Folding table", category: "table", tier: 1, price: 120, size: [2, 1], actions: ["write"], blurb: "Light, wobbly, honest." }),
@@ -885,6 +885,7 @@ function onShelf(key2, now, owned) {
 }
 
 // src/data/interactions.ts
+var DOUBLE_BEDS = ["bed_futon", "bed_wood", "bed_quilted", "bed_canopy"];
 var INTERACTIONS = [
   // Affection
   { id: "hug", label: "Hug", category: "affection", arrange: "face", a: ["hug"], b: ["hug"], fps: 2, seconds: 3, lean: 0.28, fx: [{ kind: "heart", on: "between", every: 0.7 }], away: "gave you a big hug" },
@@ -910,7 +911,7 @@ var INTERACTIONS = [
   { id: "chase", label: "Chase", category: "playful", arrange: "none", a: ["laugh1"], b: ["laugh2"], fps: 4, seconds: 6, special: "chase", away: "chased you around the room" },
   // Cozy
   { id: "sit_together", label: "Sit together", category: "cozy", arrange: "seat", a: ["sitHappy"], b: ["sitHappy"], fps: 1, seconds: 0, needs: { items: ["seat_loveseat", "seat_sofa", "bed_futon", "bed_wood", "bed_quilted", "bed_canopy", "window_seat"] }, away: "sat down with you" },
-  { id: "nap_together", label: "Nap together", category: "cozy", arrange: "bed", a: ["lie"], b: ["lie"], fps: 1, seconds: 0, fx: [{ kind: "zzz", on: "both", every: 1.4 }], needs: { items: ["bed_canopy"] }, away: "took a nap with you" },
+  { id: "nap_together", label: "Sleep together", category: "cozy", arrange: "bed", a: ["lie"], b: ["lie"], fps: 1, seconds: 0, fx: [{ kind: "zzz", on: "both", every: 1.4 }], needs: { items: DOUBLE_BEDS }, away: "lay down next to you" },
   { id: "feed_snack", label: "Feed a snack", category: "cozy", arrange: "face", a: ["feed"], b: ["eat", "laugh1"], fps: 2, seconds: 2.4, lean: 0.12, fx: [{ kind: "crumb", on: "b", every: 0.3 }], away: "shared a snack with you" },
   { id: "umbrella", label: "Share an umbrella", category: "cozy", arrange: "side", a: ["umbrella"], b: ["holdL"], fps: 1, seconds: 5, lean: 0.14, special: "umbrella", needs: { theme: "cabin" }, away: "shared an umbrella with you" },
   // Faith
