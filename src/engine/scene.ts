@@ -352,6 +352,18 @@ export class HomeScene {
     this.applySettle(p, s);
   }
 
+  /** Where my avatar is now, as the partner's phone needs it. */
+  mySettleState(settled: SettleState | null): SettleState {
+    return settled ?? this.settleOf(this.me);
+  }
+
+  /** Put someone back where they were when the app was last open, if that spot still exists. */
+  restoreSettle(who: 'me' | 'partner', s: SettleState): boolean {
+    if (s.pose !== 'stand' && !(s.placementId && this.placements.some((p) => p.id === s.placementId))) return false;
+    this.applySettle(who === 'me' ? this.me : this.partner, s);
+    return true;
+  }
+
   private applySettle(a: Actor, s: SettleState) {
     a.tile = { ...s.tile };
     if (s.pose === 'stand') { a.stand(); a.place(s.tile); a.pos.set(s.world.x, 0, s.world.z); a.facing = s.facing; return; }

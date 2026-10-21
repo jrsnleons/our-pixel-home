@@ -327,3 +327,9 @@ input[type='range']::-moz-range-thumb { width: 16px; height: 18px; border: 0; bo
 .editor-top .tabs { justify-content: center; }
 .editor-page { min-height: 260px; }
 .editor-stage.sticky { position: sticky; top: -4px; z-index: 3; background: var(--panel); padding: 4px 0 6px; margin: 0 -14px; }
+.card-swatch { background: #FFFDF6; color: var(--ink); font-size: 16px; line-height: 30px; padding: 0; }
+
+/* ---------- install to home screen ---------- */
+.install-nudge { position: absolute; left: 10px; right: 10px; bottom: calc(var(--safe-b) + 84px); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; animation: nudge-in .35s steps(5) both; }
+@keyframes nudge-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+.install-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; }

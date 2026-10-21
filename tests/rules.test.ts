@@ -144,7 +144,7 @@ describe('café', () => {
     expect(() => R.shiftFinish(ana(new Date(t.getTime() + 20_000)), s.id, 30, 0)).toThrow('too short');
     const before = w.couple.coins;
     const r = R.shiftFinish(ana(new Date(t.getTime() + 180_000)), s.id, 20, 2);
-    expect(r.pay).toBeGreaterThan(20);
+    expect(r.pay).toBeGreaterThan(10);
     expect(w.couple.coins - before).toBe(r.pay);
     expect(() => R.shiftFinish(ana(new Date(t.getTime() + 190_000)), s.id, 20, 2)).toThrow();
   });

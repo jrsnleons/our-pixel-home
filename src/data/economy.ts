@@ -18,18 +18,17 @@ export const REWARDS = {
 
 /** Pay and levels for every job on the Work board (src/data/jobs.ts). */
 export const SHIFT = {
-  /** Base pay per shift before level bonus and diminishing returns. */
-  soloPay: 30,
-  togetherPayEach: 50,
-  /** A shift is 3 minutes; the server refuses payouts for shifts shorter than this. */
-  shiftSeconds: 180,
-  minSeconds: 100,
+  /** Together, each person earns this much more than the job's solo pay. */
+  togetherMult: 1.6,
+  /** A shift is 90 seconds; the server refuses payouts for shifts shorter than this. */
+  shiftSeconds: 90,
+  minSeconds: 60,
   /** Pay drops after this many shifts in a day, all jobs together (soft diminishing returns). */
-  softCap: 10,
+  softCap: 12,
   /** Level = floor(sqrt(xp / 40)) + 1, capped at 10. XP per order is set per job. */
   maxLevel: 10,
-  /** Each level adds 6% pay. */
-  levelBonus: 0.06,
+  /** Each level adds 15% pay, so a level 10 shift pays more than double a level 1 shift. */
+  levelBonus: 0.15,
 } as const;
 
 export function jobLevel(xp: number): number {
@@ -41,17 +40,30 @@ export function xpForLevel(level: number): number {
 }
 
 /**
- * Coins for one shift. `quality` is served orders / orders that could have been served (0..1).
- * Runs on the server too, as part of the shared rules.
+ * How hard a job plays at a level, from 0 (level 1) to 1 (level 10). Every mini-game reads
+ * this to speed up customers, add steps to orders and shorten patience.
  */
-export function shiftPayout(opts: { together: boolean; quality: number; level: number; shiftsToday: number }): number {
-  const base = opts.together ? SHIFT.togetherPayEach : SHIFT.soloPay;
+export function difficulty(level: number): number {
+  return Math.max(0, Math.min(1, (level - 1) / (SHIFT.maxLevel - 1)));
+}
+
+/**
+ * Coins for one shift. `base` is the job's solo pay at level 1; `quality` is served orders /
+ * orders that could have been served (0..1). Runs on the server too, as part of the shared rules.
+ */
+export function shiftPayout(opts: { base: number; together: boolean; quality: number; level: number; shiftsToday: number }): number {
+  const base = opts.base * (opts.together ? SHIFT.togetherMult : 1);
   const q = Math.max(0, Math.min(1, opts.quality));
   const performance = 0.4 + 0.6 * q;
   const levelMult = 1 + SHIFT.levelBonus * (opts.level - 1);
   const n = opts.shiftsToday; // shifts already paid today, before this one
   const diminish = n < SHIFT.softCap ? 1 : n < SHIFT.softCap * 2 ? 0.5 : 0.25;
   return Math.max(1, Math.round(base * performance * levelMult * diminish));
+}
+
+/** About what a perfect shift pays at this level, for the job board. */
+export function shiftEstimate(base: number, level: number, together: boolean): number {
+  return shiftPayout({ base, together, quality: 1, level, shiftsToday: 0 });
 }
 
 /** Days together counter: day 1 is the start date itself. */

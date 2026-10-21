@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jobLock } from '../src/data/jobs';
+import { jobLock, type JobKey } from '../src/data/jobs';
 import { DEFAULT_LOOK } from '../src/engine/art/avatar';
 import { dispatch, snapshotOf } from '../src/net/dispatch';
 import * as R from '../src/net/rules';
@@ -20,7 +20,7 @@ function setup() {
 }
 
 /** A whole shift, three minutes long, starting `at` minutes after T0. */
-function work(c: (t?: Date) => R.Ctx, job: 'cafe' | 'flowers' | 'delivery', at: number, served = 12, missed = 0) {
+function work(c: (t?: Date) => R.Ctx, job: JobKey, at: number, served = 12, missed = 0) {
   const s = R.shiftStart(c(later(at)), false, job);
   return R.shiftFinish(c(later(at + 3)), s.id, served, missed);
 }
@@ -38,6 +38,14 @@ describe('job unlocks', () => {
     expect(work(ana, 'flowers', 25).opened).toBe('delivery');
     expect(w.profiles.ana.jobs).toEqual({ cafe: 3, flowers: 3 });
     expect(jobLock(w.profiles.ana, 'delivery')).toBeNull();
+  });
+  it('opens Bug Squad with the flower shop, then Inbox Zero after three bug shifts', () => {
+    const { ana } = setup();
+    work(ana, 'cafe', 0); work(ana, 'cafe', 5);
+    expect(work(ana, 'cafe', 10).openedAll).toEqual(['flowers', 'bugs']);
+    expect(() => R.shiftStart(ana(), false, 'inbox')).toThrow('bug');
+    work(ana, 'bugs', 15, 40); work(ana, 'bugs', 20, 40);
+    expect(work(ana, 'bugs', 25, 40).opened).toBe('inbox');
   });
   it('counts per person, and a together shift counts for both', () => {
     const { w, ana, ben } = setup();
@@ -65,24 +73,24 @@ describe('job pay and levels', () => {
     w.profiles.ana.jobs = { cafe: 3 };
     work(ana, 'flowers', 0, 10);
     expect(w.couple.cafeXp).toBe(0);
-    expect(w.couple.jobXp?.flowers).toBe(20);
+    expect(w.couple.jobXp?.flowers).toBe(30);
   });
-  it('softens pay after ten shifts a day across every job', () => {
+  it('softens pay after twelve shifts a day across every job', () => {
     const { w, ana } = setup();
     w.profiles.ana.jobs = { cafe: 3, flowers: 3 };
-    for (let i = 0; i < 10; i++) work(ana, i % 2 ? 'flowers' : 'delivery', i * 5);
-    expect(R.shiftsToday(w, 'ana', '2026-10-19')).toBe(10);
-    const tired = work(ana, 'cafe', 60);
+    for (let i = 0; i < 12; i++) work(ana, i % 2 ? 'flowers' : 'delivery', i * 5);
+    expect(R.shiftsToday(w, 'ana', '2026-10-19')).toBe(12);
+    const tired = work(ana, 'cafe', 70);
     const fresh = setup();
     expect(tired.pay).toBeLessThan(work(fresh.ana, 'cafe', 0).pay);
   });
   it('caps orders at what the job allows in the time', () => {
     const { w, ana } = setup();
     w.profiles.ana.jobs = { cafe: 3 };
-    const honest = work(ana, 'flowers', 0, 25, 0);
+    const honest = work(ana, 'flowers', 0, 15, 0);
     const cheat = work(ana, 'flowers', 5, 80, 0);
     expect(cheat.pay).toBeLessThan(honest.pay);
-    expect(w.couple.jobXp?.flowers).toBe(50 + 52);
+    expect(w.couple.jobXp?.flowers).toBe(45 + 60);
   });
   it('checks the job name from the network and reports today’s pay per job', () => {
     const { w, ana } = setup();

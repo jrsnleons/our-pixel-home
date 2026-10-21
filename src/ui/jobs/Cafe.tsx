@@ -7,6 +7,7 @@ import { dither } from '../../engine/art/pixel';
 import type { AvatarLook } from '../../engine/art/avatar';
 import type { CafeEvent } from '../../net/types';
 import { backend, partner, toast } from '../../state/store';
+import { difficulty } from '../../data/economy';
 import { avatarSprite, customerLook, SHIFT_SECONDS, sendShift, ShiftHud, useShiftEvents, type ShiftProps } from './common';
 
 // ---------- drinks ----------
@@ -21,7 +22,17 @@ export const DRINKS = [
 ] as const;
 type DrinkKey = typeof DRINKS[number]['key'];
 
-function drawCup(g: CanvasRenderingContext2D, x: number, y: number, d: typeof DRINKS[number], s = 1) {
+/** Extras the café adds from level 3: ice, then whipped cream, then caramel. */
+export const MODS = [
+  { key: 'ice', name: 'Iced', from: 0.2 },
+  { key: 'whip', name: 'Whipped cream', from: 0.45 },
+  { key: 'caramel', name: 'Caramel', from: 0.65 },
+] as const;
+type ModKey = typeof MODS[number]['key'];
+
+const sameMods = (a: readonly string[], b: readonly string[]) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+
+function drawCup(g: CanvasRenderingContext2D, x: number, y: number, d: typeof DRINKS[number], s = 1, mods: readonly string[] = []) {
   const o = '#3A2418';
   const P = (c: string, px: number, py: number, w = 1, h = 1) => { g.fillStyle = c; g.fillRect(x + px * s, y + py * s, w * s, h * s); };
   P(o, 1, 2, 8, 1); P(o, 1, 3, 1, 6); P(o, 8, 3, 1, 6); P(o, 2, 9, 6, 1);
@@ -32,22 +43,35 @@ function drawCup(g: CanvasRenderingContext2D, x: number, y: number, d: typeof DR
   if ('tag' in d) { P('#E8E0D0', 8, 5, 1, 1); P('#E8E0D0', 9, 6, 1, 2); }
   if ('straw' in d) { P('#E8414A', 6, 0, 1, 3); }
   P(o, 9, 4, 1, 3); P(o, 10, 5, 0.5, 1);
+  if (mods.includes('ice')) { P('#DDF2FA', 2, 3, 2, 2); P('#FFFFFF', 2, 3); P('#DDF2FA', 5, 4, 2, 1); P('rgba(120,190,230,.45)', 2, 5, 6, 4); }
+  if (mods.includes('whip')) { P(o, 2, 0, 6, 1); P(o, 1, 1, 1, 2); P(o, 8, 1, 1, 2); P('#FFFDF6', 2, 1, 6, 2); P('#FFFDF6', 3, 0, 4, 1); P('#E8E0D0', 6, 2, 2, 1); }
+  if (mods.includes('caramel')) { P('#C8782A', 3, mods.includes('whip') ? 1 : 3, 1, 1); P('#E89A3A', 4, mods.includes('whip') ? 0 : 3, 2, 1); P('#C8782A', 6, mods.includes('whip') ? 1 : 4, 1, 1); P('#C8782A', 7, 6, 1, 2); }
 }
 
 const cupUrls = new Map<string, string>();
-function cupUrl(k: DrinkKey) {
-  let u = cupUrls.get(k);
+function cupUrl(k: DrinkKey, mods: readonly string[] = []) {
+  const key = k + mods.join();
+  let u = cupUrls.get(key);
   if (!u) {
     const c = document.createElement('canvas'); c.width = 11; c.height = 11;
-    drawCup(c.getContext('2d')!, 0, 0, DRINKS.find((d) => d.key === k)!);
-    u = c.toDataURL(); cupUrls.set(k, u);
+    drawCup(c.getContext('2d')!, 0, 0, DRINKS.find((d) => d.key === k)!, 1, mods);
+    u = c.toDataURL(); cupUrls.set(key, u);
   }
   return u;
 }
 
+/** Extras for one order: none at level 1-2, one at most until level 7, up to three at the top. */
+function orderMods(hard: number): ModKey[] {
+  const open = MODS.filter((m) => hard >= m.from).map((m) => m.key);
+  if (!open.length || Math.random() < 0.45 - hard * 0.3) return [];
+  const most = hard >= 0.85 ? 3 : hard >= 0.65 ? 2 : 1;
+  const n = 1 + Math.floor(Math.random() * Math.min(most, open.length));
+  return open.sort(() => Math.random() - 0.5).slice(0, n);
+}
+
 // ---------- shift ----------
 
-interface Customer { id: number; seat: number; drink: DrinkKey; born: number; patience: number; taken: boolean; ready: boolean; leaving: number; happy: boolean; look: AvatarLook }
+interface Customer { id: number; seat: number; drink: DrinkKey; mods: ModKey[]; born: number; patience: number; taken: boolean; ready: boolean; leaving: number; happy: boolean; look: AvatarLook }
 
 let backdrop: HTMLCanvasElement | null = null;
 /** The café behind the counter: menu board, shelf, pendant lamps and a window onto the street. */
@@ -106,9 +130,12 @@ export function cafeBackdrop(): HTMLCanvasElement {
 
 const W = 128, H = 84, SEATS = 4;
 
-export function CafeShift({ id, role, onEnd }: ShiftProps) {
+export function CafeShift({ id, role, level, resume, onEnd, onTick }: ShiftProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const st = useRef({ customers: [] as Customer[], nextId: 1, nextSpawn: 1.5, t: 0, served: 0, missed: 0, brewing: null as null | { drink: DrinkKey; done: number; forId?: number }, holding: null as DrinkKey | null, tickets: [] as { id: number; drink: DrinkKey; seat: number; made: boolean }[], ended: false });
+  const hard = difficulty(level);
+  const mods = MODS.filter((m) => hard >= m.from);
+  const brewTime = 1.2 - 0.3 * hard;
+  const st = useRef({ customers: [] as Customer[], nextId: 1, nextSpawn: 1.5, t: resume?.t ?? 0, served: resume?.served ?? 0, missed: resume?.missed ?? 0, brewing: null as null | { drink: DrinkKey; done: number; forId?: number }, holding: null as DrinkKey | null, holdingFor: undefined as number | undefined, extras: [] as ModKey[], tickets: [] as { id: number; drink: DrinkKey; mods: ModKey[]; seat: number; made: boolean }[], ended: false });
   const [, force] = useState(0);
   const rerender = () => force((x) => x + 1);
   const together = role !== 'solo';
@@ -121,7 +148,7 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
   // The partner's half of the shift.
   useShiftEvents(id, (ev) => {
     const s = st.current;
-    if (ev.k === 'order' && role === 'guest') { s.tickets.push({ id: ev.id, drink: ev.drink as DrinkKey, seat: ev.seat, made: false }); sfx('bell'); }
+    if (ev.k === 'order' && role === 'guest') { s.tickets.push({ id: ev.id, drink: ev.drink as DrinkKey, mods: (ev.mods ?? []) as ModKey[], seat: ev.seat, made: false }); sfx('bell'); }
     if (ev.k === 'ready' && role === 'host') { const c = s.customers.find((x) => x.id === ev.id); if (c) { c.ready = true; sfx('pop'); } }
     if (ev.k === 'served' && role === 'guest') { s.served += ev.ok ? 1 : 0; s.missed += ev.ok ? 0 : 1; s.tickets = s.tickets.filter((t) => t.id !== ev.id); }
     if (ev.k === 'end' && role === 'guest') { s.served = ev.served; s.missed = ev.missed; finish(); }
@@ -150,8 +177,10 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
         if (s.nextSpawn <= 0 && free.length && s.t < duration - 8) {
           const seat = free[Math.floor(Math.random() * free.length)];
           const n = s.nextId++;
-          s.customers.push({ id: n, seat, drink: DRINKS[Math.floor(Math.random() * (together ? 6 : 4 + Math.min(2, Math.floor(s.t / 50))))].key, born: s.t, patience: together ? 30 : 24, taken: !together, ready: false, leaving: 0, happy: false, look: customerLook(n) });
-          s.nextSpawn = Math.max(3.2, 7 - s.t / 40) * (together ? 0.85 : 1) * (0.8 + Math.random() * 0.4);
+          const menu = together || hard >= 0.2 ? 6 : 4 + Math.min(2, Math.floor(s.t / 30));
+          const extra = orderMods(hard);
+          s.customers.push({ id: n, seat, drink: DRINKS[Math.floor(Math.random() * menu)].key, mods: extra, born: s.t, patience: (together ? 28 : 22) - 7 * hard + extra.length * 3, taken: !together, ready: false, leaving: 0, happy: false, look: customerLook(n) });
+          s.nextSpawn = Math.max(2.6, 6 - s.t / 25 - 1.6 * hard) * (together ? 0.85 : 1) * (0.8 + Math.random() * 0.4);
         }
         for (const c of s.customers) {
           if (c.leaving) { c.leaving += dt; continue; }
@@ -161,8 +190,9 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
       }
       if (s.brewing && s.t >= s.brewing.done) {
         const b = s.brewing; s.brewing = null; sfx('pop');
-        if (role === 'guest') { const tk = s.tickets.find((x) => x.id === b.forId); if (tk) { tk.made = true; send({ k: 'ready', id: tk.id }); } }
-        else s.holding = b.drink;
+        s.holding = b.drink; s.holdingFor = b.forId; s.extras = [];
+        // With nothing extra to add, the barista's cup goes straight to the counter.
+        if (role === 'guest') { const tk = s.tickets.find((x) => x.id === b.forId); if (tk && !tk.mods.length) handOver(); }
       }
       // Preview: the pretend partner makes drinks a moment after each order.
       if (role === 'host' && isBot) {
@@ -170,6 +200,7 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
         for (const c of s.customers) { const bc = c as Customer & { botAt?: number }; if (bc.botAt && !c.ready && s.t >= bc.botAt) { c.ready = true; sfx('pop'); } }
       }
       if (s.t >= duration) { finish(); return; }
+      onTick?.({ t: s.t, served: s.served, missed: s.missed });
       draw();
       raf = requestAnimationFrame(loop);
     };
@@ -205,7 +236,7 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
       if (!cu.leaving) {
         g.fillStyle = '#FFFFFF'; g.fillRect(x + 1, y - 17, 16, 13); g.fillRect(x + 7, y - 4, 3, 2);
         g.fillStyle = '#3A2418'; g.fillRect(x + 1, y - 18, 16, 1); g.fillRect(x + 1, y - 4, 16, 1); g.fillRect(x, y - 17, 1, 13); g.fillRect(x + 17, y - 17, 1, 13);
-        if (cu.taken) drawCup(g, x + 4, y - 16, DRINKS.find((d) => d.key === cu.drink)!);
+        if (cu.taken) drawCup(g, x + 4, y - 15, DRINKS.find((d) => d.key === cu.drink)!, 1, cu.mods);
         else { g.fillStyle = '#3A2418'; g.fillRect(x + 7, y - 15, 4, 1); g.fillRect(x + 10, y - 14, 1, 3); g.fillRect(x + 8, y - 12, 2, 1); g.fillRect(x + 8, y - 9, 2, 2); }
         const left = Math.max(0, 1 - wait / cu.patience);
         g.fillStyle = '#3A2418'; g.fillRect(x + 1, y - 22, 16, 3);
@@ -214,9 +245,9 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
       }
     }
     // Ready cups waiting on the counter (together) and the cup in hand (solo).
-    for (const cu of s.customers) if (cu.ready && !cu.leaving) drawCup(g, 12 + cu.seat * 30, 51, DRINKS.find((d) => d.key === cu.drink)!);
-    if (s.holding) drawCup(g, W / 2 - 5, 66, DRINKS.find((d) => d.key === s.holding)!, 1);
-    if (s.brewing) { const p = 1 - (s.brewing.done - s.t) / 1.2; g.fillStyle = '#3A2418'; g.fillRect(W / 2 - 12, 78, 24, 4); g.fillStyle = '#F2C230'; g.fillRect(W / 2 - 11, 79, Math.round(22 * p), 2); }
+    for (const cu of s.customers) if (cu.ready && !cu.leaving) drawCup(g, 12 + cu.seat * 30, 51, DRINKS.find((d) => d.key === cu.drink)!, 1, cu.mods);
+    if (s.holding && role === 'solo') drawCup(g, W / 2 - 5, 66, DRINKS.find((d) => d.key === s.holding)!, 1, s.extras);
+    if (s.brewing) { const p = 1 - (s.brewing.done - s.t) / brewTime; g.fillStyle = '#3A2418'; g.fillRect(W / 2 - 12, 78, 24, 4); g.fillStyle = '#F2C230'; g.fillRect(W / 2 - 11, 79, Math.round(22 * p), 2); }
   };
 
   const tapCanvas = (e: PointerEvent) => {
@@ -229,7 +260,7 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
     if (!c) return;
     if (!c.taken) {
       c.taken = true; sfx('tap');
-      send({ k: 'order', id: c.id, drink: c.drink, seat: c.seat });
+      send({ k: 'order', id: c.id, drink: c.drink, mods: c.mods, seat: c.seat });
       return;
     }
     if (role === 'host') {
@@ -238,8 +269,27 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
       return;
     }
     if (!s.holding) { toast('Make a drink first.'); return; }
-    serve(c, s.holding === c.drink);
-    s.holding = null;
+    serve(c, s.holding === c.drink && sameMods(s.extras, c.mods));
+    s.holding = null; s.extras = [];
+  };
+
+  /** The barista sets the finished cup on the counter, if it matches the ticket. */
+  const handOver = () => {
+    const s = st.current;
+    const tk = s.tickets.find((x) => x.id === s.holdingFor);
+    if (!s.holding || !tk) return;
+    if (tk.drink !== s.holding || !sameMods(s.extras, tk.mods)) { sfx('error'); toast('That’s not what the ticket says. Start that one again.'); }
+    else { tk.made = true; send({ k: 'ready', id: tk.id }); sfx('pop'); }
+    s.holding = null; s.holdingFor = undefined; s.extras = [];
+    rerender();
+  };
+
+  const toggleMod = (m: ModKey) => {
+    const s = st.current;
+    if (!s.holding) { toast('Make the drink first, then add extras.'); return; }
+    sfx('tap');
+    s.extras = s.extras.includes(m) ? s.extras.filter((x) => x !== m) : [...s.extras, m];
+    rerender();
   };
 
   const serve = (c: Customer, ok: boolean) => {
@@ -253,8 +303,8 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
   const brew = (d: DrinkKey, forId?: number) => {
     const s = st.current;
     if (s.brewing) return;
-    if (role === 'solo' && s.holding) { toast('Hand over the drink you’re holding first.'); return; }
-    s.brewing = { drink: d, done: s.t + 1.2, forId };
+    if (s.holding) { toast(role === 'solo' ? 'Hand over the drink you’re holding first.' : 'Finish the cup you’re holding first.'); return; }
+    s.brewing = { drink: d, done: s.t + brewTime, forId };
     sfx('tap');
   };
 
@@ -275,15 +325,15 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
           <div class="row wrap">
             {s.tickets.filter((t) => !t.made).map((t) => (
               <button class="card" aria-selected={pick === t.id} style={{ width: '30%' }} onClick={() => setPick(t.id)}>
-                <img src={cupUrl(t.drink)} alt="" style={{ width: '44px', imageRendering: 'pixelated' }} />
-                <span class="name">{DRINKS.find((d) => d.key === t.drink)!.name}</span>
+                <img src={cupUrl(t.drink, t.mods)} alt="" style={{ width: '44px', imageRendering: 'pixelated' }} />
+                <span class="name">{[DRINKS.find((d) => d.key === t.drink)!.name, ...t.mods.map((m) => MODS.find((x) => x.key === m)!.name.toLowerCase())].join(', ')}</span>
               </button>
             ))}
           </div>
         </div>
       )}
       <p class="tiny muted center" style={{ margin: 0 }}>
-        {role === 'solo' ? 'Make the drink in the bubble, then tap that customer.' : role === 'host' ? `Tap customers to take orders. When ${name} sets a drink down, tap the customer to serve it.` : ''}
+        {role === 'solo' ? `Make the drink in the bubble${mods.length ? ', add any extras it shows' : ''}, then tap that customer.` : role === 'host' ? `Tap customers to take orders. When ${name} sets a drink down, tap the customer to serve it.` : ''}
       </p>
       {role !== 'host' && (
         <div class="drinks">
@@ -299,6 +349,12 @@ export function CafeShift({ id, role, onEnd }: ShiftProps) {
               <img src={cupUrl(d.key)} alt="" />{d.name}
             </button>
           ))}
+        </div>
+      )}
+      {role !== 'host' && mods.length > 0 && (
+        <div class="row wrap" style={{ justifyContent: 'center', gap: '6px' }}>
+          {mods.map((m) => <button class="btn soft small" aria-pressed={s.extras.includes(m.key)} disabled={!s.holding} onClick={() => toggleMod(m.key)}>+ {m.name}</button>)}
+          {role === 'guest' && <button class="btn small" disabled={!s.holding} onClick={handOver}>Set it down</button>}
         </div>
       )}
     </div>

@@ -273,24 +273,23 @@ var REWARDS = {
   ]
 };
 var SHIFT = {
-  /** Base pay per shift before level bonus and diminishing returns. */
-  soloPay: 30,
-  togetherPayEach: 50,
-  /** A shift is 3 minutes; the server refuses payouts for shifts shorter than this. */
-  shiftSeconds: 180,
-  minSeconds: 100,
+  /** Together, each person earns this much more than the job's solo pay. */
+  togetherMult: 1.6,
+  /** A shift is 90 seconds; the server refuses payouts for shifts shorter than this. */
+  shiftSeconds: 90,
+  minSeconds: 60,
   /** Pay drops after this many shifts in a day, all jobs together (soft diminishing returns). */
-  softCap: 10,
+  softCap: 12,
   /** Level = floor(sqrt(xp / 40)) + 1, capped at 10. XP per order is set per job. */
   maxLevel: 10,
-  /** Each level adds 6% pay. */
-  levelBonus: 0.06
+  /** Each level adds 15% pay, so a level 10 shift pays more than double a level 1 shift. */
+  levelBonus: 0.15
 };
 function jobLevel(xp) {
   return Math.min(SHIFT.maxLevel, Math.floor(Math.sqrt(Math.max(0, xp) / 40)) + 1);
 }
 function shiftPayout(opts) {
-  const base = opts.together ? SHIFT.togetherPayEach : SHIFT.soloPay;
+  const base = opts.base * (opts.together ? SHIFT.togetherMult : 1);
   const q = Math.max(0, Math.min(1, opts.quality));
   const performance = 0.4 + 0.6 * q;
   const levelMult = 1 + SHIFT.levelBonus * (opts.level - 1);
@@ -347,8 +346,9 @@ var JOBS = {
     name: "Caf\xE9",
     place: "Pixel Caf\xE9",
     blurb: "Read each order, make the drink and hand it over before they get tired of waiting.",
-    orderSeconds: 5,
-    xpPerOrder: 1,
+    pay: 20,
+    orderSeconds: 4,
+    xpPerOrder: 2,
     unit: ["drink", "drinks"],
     roles: ["counter", "barista"]
   },
@@ -358,8 +358,9 @@ var JOBS = {
     place: "Petal & Stem",
     blurb: "Build each bouquet from the order card: three flowers, a wrap and a ribbon.",
     unlock: { after: "cafe", shifts: 3 },
-    orderSeconds: 7,
-    xpPerOrder: 2,
+    pay: 26,
+    orderSeconds: 6,
+    xpPerOrder: 3,
     unit: ["bouquet", "bouquets"],
     roles: ["wrapping", "flowers"]
   },
@@ -369,10 +370,35 @@ var JOBS = {
     place: "Bike delivery",
     blurb: "Ride down Maple Street, dodge puddles and cats, and drop each parcel at the right mailbox.",
     unlock: { after: "flowers", shifts: 3 },
+    pay: 30,
     orderSeconds: 2.5,
-    xpPerOrder: 1,
+    xpPerOrder: 2,
     unit: ["parcel", "parcels"],
     roles: ["left lane", "right lane"]
+  },
+  bugs: {
+    key: "bugs",
+    name: "Bug squashing",
+    place: "Desk: Bug Squad",
+    blurb: "Bugs crawl down the code on your monitor. Aim the little zapper and squash them before they reach the build.",
+    unlock: { after: "cafe", shifts: 3 },
+    pay: 24,
+    orderSeconds: 0.7,
+    xpPerOrder: 1,
+    unit: ["bug", "bugs"],
+    roles: ["left screen", "right screen"]
+  },
+  inbox: {
+    key: "inbox",
+    name: "Inbox sorting",
+    place: "Desk: Inbox Zero",
+    blurb: "Emails pile into the inbox. Read each one and file it in the right folder before the pile overflows.",
+    unlock: { after: "bugs", shifts: 3 },
+    pay: 30,
+    orderSeconds: 1.2,
+    xpPerOrder: 1,
+    unit: ["email", "emails"],
+    roles: ["top pile", "bottom pile"]
   }
 };
 var JOB_KEYS = Object.keys(JOBS);
@@ -1352,14 +1378,14 @@ function shiftFinish(c, id, served, missed) {
   const J = JOBS[job2];
   const secs = (c.now.getTime() - Date.parse(s.startedAt)) / 1e3;
   if (secs < SHIFT.minSeconds) throw new RuleError("That shift was too short to pay.");
-  const sv = Math.max(0, Math.min(80, Math.floor(served)));
-  const ms = Math.max(0, Math.min(80, Math.floor(missed)));
+  const sv = Math.max(0, Math.min(150, Math.floor(served)));
+  const ms = Math.max(0, Math.min(150, Math.floor(missed)));
   const maxOrders = Math.ceil(Math.min(secs, SHIFT.shiftSeconds + 30) / J.orderSeconds);
   const real = Math.min(sv, maxOrders);
   const quality = sv + ms === 0 ? 0 : real / (sv + ms);
   const day = today(c);
   const before = jobLevel(jobXp(c.w.couple, job2));
-  const pay = shiftPayout({ together: s.together, quality, level: before, shiftsToday: shiftsToday(c.w, c.me, day) });
+  const pay = shiftPayout({ base: J.pay, together: s.together, quality, level: before, shiftsToday: shiftsToday(c.w, c.me, day) });
   c.w.couple.coins += pay;
   c.w.ledger.push({ user: c.me, reason: job2, amount: pay, day, at: c.now.toISOString() });
   const xp = real * J.xpPerOrder;
@@ -1368,7 +1394,8 @@ function shiftFinish(c, id, served, missed) {
   const me = c.w.profiles[c.me];
   const locked = JOB_KEYS.filter((k) => jobLock(me, k));
   me.jobs = { ...me.jobs, [job2]: (me.jobs?.[job2] ?? 0) + 1 };
-  const opened = locked.find((k) => !jobLock(me, k)) ?? null;
+  const openedAll = locked.filter((k) => !jobLock(me, k));
+  const opened = openedAll[0] ?? null;
   s.finishedBy = [...s.finishedBy ?? [], c.me];
   s.served = sv;
   s.missed = ms;
@@ -1376,7 +1403,7 @@ function shiftFinish(c, id, served, missed) {
   s.pay = pay;
   const level = jobLevel(jobXp(c.w.couple, job2));
   event(c, "shift", { pay, together: s.together, served: sv, job: job2 });
-  return { pay, level, levelUp: level > before, job: job2, opened };
+  return { pay, level, levelUp: level > before, job: job2, opened, openedAll };
 }
 var GOD_COINS = 5e4;
 function godMode(c) {

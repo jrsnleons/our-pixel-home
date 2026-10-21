@@ -8,6 +8,7 @@ import type { AvatarLook } from '../../engine/art/avatar';
 import { dither } from '../../engine/art/pixel';
 import type { CafeEvent } from '../../net/types';
 import { backend, partner, toast } from '../../state/store';
+import { difficulty } from '../../data/economy';
 import { avatarSprite, customerLook, SHIFT_SECONDS, sendShift, ShiftHud, useShiftEvents, type ShiftProps } from './common';
 
 // ---------- flowers, wraps and ribbons ----------
@@ -35,7 +36,14 @@ export const RIBBONS = [
   { name: 'Gold ribbon', d: '#86600E', m: '#F2C230' },
 ];
 
-interface Bouquet { flowers: FlowerKey[]; wrap: number | null; ribbon: number | null }
+/** Gift cards tucked into the wrap at higher levels: none, a heart, or a star. */
+export const CARDS = [
+  { name: 'No card', c: '' },
+  { name: 'Heart card', c: '#E5566F' },
+  { name: 'Star card', c: '#F2C230' },
+];
+
+interface Bouquet { flowers: FlowerKey[]; wrap: number | null; ribbon: number | null; card?: number }
 
 const P = (g: CanvasRenderingContext2D, c: string, x: number, y: number, w = 1, h = 1) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
 
@@ -74,6 +82,13 @@ export function drawBouquet(g: CanvasRenderingContext2D, x: number, y: number, b
     P(g, R.d, x + 4, y + 13, 9, 2); P(g, R.m, x + 5, y + 13, 7, 1);
     P(g, R.m, x + 5, y + 11, 2, 2); P(g, R.m, x + 10, y + 11, 2, 2); P(g, R.d, x + 8, y + 12, 1, 3);
     P(g, R.m, x + 7, y + 15, 1, 2); P(g, R.m, x + 9, y + 15, 1, 2); P(g, R.d, x + 6, y + 17, 1, 1); P(g, R.d, x + 10, y + 17, 1, 1);
+  }
+  if (b.card) {
+    // A little card on a string, tucked in at the side.
+    const c = CARDS[b.card].c;
+    P(g, '#3A2418', x + 11, y + 15, 6, 5); P(g, '#FFFDF6', x + 12, y + 16, 4, 3);
+    if (b.card === 1) { P(g, c, x + 12, y + 16); P(g, c, x + 14, y + 16); P(g, c, x + 12, y + 17, 3, 1); P(g, c, x + 13, y + 18); }
+    else { P(g, c, x + 13, y + 16); P(g, c, x + 12, y + 17, 3, 1); P(g, c, x + 13, y + 18); }
   }
 }
 
@@ -155,22 +170,33 @@ export function flowerBackdrop(): HTMLCanvasElement {
   return c;
 }
 
-interface Customer { id: number; seat: number; want: Bouquet & { wrap: number; ribbon: number }; born: number; patience: number; taken: boolean; stems: boolean; leaving: number; happy: boolean; look: AvatarLook; botAt?: number }
+interface Customer { id: number; seat: number; want: Bouquet & { wrap: number; ribbon: number; card: number }; born: number; patience: number; taken: boolean; stems: boolean; leaving: number; happy: boolean; look: AvatarLook; botAt?: number }
 interface Ticket { id: number; flowers: FlowerKey[]; seat: number }
 
-function newOrder(t: number): Bouquet & { wrap: number; ribbon: number } {
+/**
+ * One customer's order. Low levels use four familiar flowers with a repeat; from level 3 any of
+ * the six can show up, all different by level 6; from level 5 some ask for a gift card too.
+ */
+function newOrder(t: number, hard: number): Bouquet & { wrap: number; ribbon: number; card: number } {
   const r = (n: number) => Math.floor(Math.random() * n);
-  // Early orders use a few familiar flowers and repeat one; later anything goes.
-  const pool = t < 45 ? FLOWERS.slice(0, 4) : FLOWERS;
+  const easy = hard < 0.2 && t < 45;
+  const pool = easy ? FLOWERS.slice(0, 4) : FLOWERS;
   const a = pool[r(pool.length)].key, b = pool[r(pool.length)].key;
-  const flowers: FlowerKey[] = t < 45 ? [a, a, b] : [a, b, FLOWERS[r(FLOWERS.length)].key];
-  return { flowers, wrap: r(WRAPS.length), ribbon: r(RIBBONS.length) };
+  let flowers: FlowerKey[] = easy ? [a, a, b] : [a, b, FLOWERS[r(FLOWERS.length)].key];
+  if (hard >= 0.55) {
+    const keys = FLOWERS.map((f) => f.key).sort(() => Math.random() - 0.5);
+    flowers = keys.slice(0, 3);
+  }
+  const card = hard >= 0.4 && Math.random() < 0.35 + hard * 0.4 ? 1 + r(2) : 0;
+  return { flowers, wrap: r(WRAPS.length), ribbon: r(RIBBONS.length), card };
 }
 
-export function FlowerShift({ id, role, onEnd }: ShiftProps) {
+export function FlowerShift({ id, role, level, resume, onEnd, onTick }: ShiftProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const st = useRef({ customers: [] as Customer[], nextId: 1, nextSpawn: 1.5, t: 0, served: 0, missed: 0, tickets: [] as Ticket[], ended: false });
-  const [bench, setBench] = useState<Bouquet>({ flowers: [], wrap: 0, ribbon: 0 });
+  const hard = difficulty(level);
+  const cards = hard >= 0.4;
+  const st = useRef({ customers: [] as Customer[], nextId: 1, nextSpawn: 1.5, t: resume?.t ?? 0, served: resume?.served ?? 0, missed: resume?.missed ?? 0, tickets: [] as Ticket[], ended: false });
+  const [bench, setBench] = useState<Bouquet>({ flowers: [], wrap: 0, ribbon: 0, card: 0 });
   const [ticket, setTicket] = useState<number | null>(null);
   const [, force] = useState(0);
   const rerender = () => force((x) => x + 1);
@@ -208,8 +234,8 @@ export function FlowerShift({ id, role, onEnd }: ShiftProps) {
         if (s.nextSpawn <= 0 && free.length && s.t < SHIFT_SECONDS - 10) {
           const seat = free[Math.floor(Math.random() * free.length)];
           const n = s.nextId++;
-          s.customers.push({ id: n, seat, want: newOrder(s.t), born: s.t, patience: together ? 48 : 44 - Math.min(10, s.t / 18), taken: !together, stems: false, leaving: 0, happy: false, look: customerLook(n + 40) });
-          s.nextSpawn = Math.max(7, 12 - s.t / 30) * (together ? 0.85 : 1) * (0.85 + Math.random() * 0.3);
+          s.customers.push({ id: n, seat, want: newOrder(s.t, hard), born: s.t, patience: (together ? 34 : 30) - 9 * hard - Math.min(6, s.t / 15), taken: !together, stems: false, leaving: 0, happy: false, look: customerLook(n + 40) });
+          s.nextSpawn = Math.max(5, 9 - s.t / 25 - 2.5 * hard) * (together ? 0.85 : 1) * (0.85 + Math.random() * 0.3);
         }
         for (const c of s.customers) {
           if (c.leaving) { c.leaving += dt; continue; }
@@ -223,6 +249,7 @@ export function FlowerShift({ id, role, onEnd }: ShiftProps) {
         s.customers = s.customers.filter((c) => c.leaving < 1.2);
       }
       if (s.t >= SHIFT_SECONDS) { finish(); return; }
+      onTick?.({ t: s.t, served: s.served, missed: s.missed });
       draw();
       raf = requestAnimationFrame(loop);
     };
@@ -283,11 +310,11 @@ export function FlowerShift({ id, role, onEnd }: ShiftProps) {
     }
     if (role === 'host') {
       if (!c.stems) { toast(`${name} is still picking the flowers.`); return; }
-      serve(c, bench.wrap === c.want.wrap && bench.ribbon === c.want.ribbon);
+      serve(c, bench.wrap === c.want.wrap && bench.ribbon === c.want.ribbon && (bench.card ?? 0) === c.want.card);
       return;
     }
     if (bench.flowers.length < 3) { toast('Pick three flowers first.'); return; }
-    serve(c, same(bench.flowers, c.want.flowers) && bench.wrap === c.want.wrap && bench.ribbon === c.want.ribbon);
+    serve(c, same(bench.flowers, c.want.flowers) && bench.wrap === c.want.wrap && bench.ribbon === c.want.ribbon && (bench.card ?? 0) === c.want.card);
     setBench({ ...bench, flowers: [] });
   };
 
@@ -318,7 +345,7 @@ export function FlowerShift({ id, role, onEnd }: ShiftProps) {
 
   const s = st.current;
   const left = Math.max(0, Math.ceil(SHIFT_SECONDS - s.t));
-  const preview = role === 'host' ? { flowers: ['daisy', 'daisy', 'daisy'] as FlowerKey[], wrap: bench.wrap, ribbon: bench.ribbon } : role === 'guest' ? { ...bench, wrap: null, ribbon: null } : bench;
+  const preview = role === 'host' ? { flowers: ['daisy', 'daisy', 'daisy'] as FlowerKey[], wrap: bench.wrap, ribbon: bench.ribbon, card: bench.card } : role === 'guest' ? { ...bench, wrap: null, ribbon: null, card: 0 } : bench;
   return (
     <div class="col">
       <ShiftHud label={role === 'solo' ? 'Solo' : role === 'host' ? 'You: wrapping' : 'You: flowers'} served={s.served} missed={s.missed} left={left} />
@@ -351,6 +378,10 @@ export function FlowerShift({ id, role, onEnd }: ShiftProps) {
             <div class="swatches">{WRAPS.map((w, i) => <button class="swatch" aria-label={w.name} aria-pressed={bench.wrap === i} style={{ background: w.m }} onClick={() => { sfx('tap'); setBench({ ...bench, wrap: i }); }} />)}</div>
             <span class="tiny muted">Ribbon</span>
             <div class="swatches">{RIBBONS.map((rb, i) => <button class="swatch" aria-label={rb.name} aria-pressed={bench.ribbon === i} style={{ background: rb.m }} onClick={() => { sfx('tap'); setBench({ ...bench, ribbon: i }); }} />)}</div>
+            {cards && <>
+              <span class="tiny muted">Card</span>
+              <div class="swatches">{CARDS.map((cd, i) => <button class="swatch card-swatch" aria-label={cd.name} aria-pressed={(bench.card ?? 0) === i} onClick={() => { sfx('tap'); setBench({ ...bench, card: i }); }}>{i === 0 ? '–' : i === 1 ? '♥' : '★'}</button>)}</div>
+            </>}
           </div>
         )}
         {role === 'guest' && <button class="btn grow" disabled={ticket == null || bench.flowers.length < 3} onClick={sendStems}>Send stems</button>}
@@ -365,7 +396,7 @@ export function FlowerShift({ id, role, onEnd }: ShiftProps) {
         </div>
       )}
       <p class="tiny muted center" style={{ margin: 0 }}>
-        {role === 'solo' ? 'Pick three flowers, a wrap and a ribbon to match the bubble, then tap that customer.'
+        {role === 'solo' ? `Pick three flowers, a wrap and a ribbon${cards ? ' (and a card if they want one)' : ''} to match the bubble, then tap that customer.`
           : role === 'host' ? `Tap customers to take orders. When ${name}’s stems are on the counter, pick the wrap and ribbon from the bubble and tap the customer.` : ''}
       </p>
     </div>

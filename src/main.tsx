@@ -6,6 +6,7 @@ import '@fontsource/vt323/400.css';
 import './styles/app.css';
 import { render } from 'preact';
 import { LocalBackend } from './net/local';
+import { listenForInstall, registerServiceWorker } from './state/pwa';
 import { setBackend } from './state/store';
 import { App } from './ui/App';
 
@@ -19,10 +20,8 @@ async function boot() {
     setBackend(new LocalBackend());
   }
   render(<App />, document.getElementById('app')!);
-  if ('serviceWorker' in navigator && import.meta.env.PROD) {
-    const { registerSW } = await import('virtual:pwa-register');
-    registerSW({ immediate: true });
-  }
+  listenForInstall();
+  if ('serviceWorker' in navigator && import.meta.env.PROD) void registerServiceWorker();
 }
 
 void boot();

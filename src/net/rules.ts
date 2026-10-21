@@ -640,7 +640,7 @@ export function shiftsToday(w: World, user: string, day: string): number {
 }
 
 /** Each worker finishes their own half; together shifts pay each person and count for both. */
-export function shiftFinish(c: Ctx, id: string, served: number, missed: number): { pay: number; level: number; levelUp: boolean; job: JobKey; opened: JobKey | null } {
+export function shiftFinish(c: Ctx, id: string, served: number, missed: number): { pay: number; level: number; levelUp: boolean; job: JobKey; opened: JobKey | null; openedAll: JobKey[] } {
   const s = c.w.shifts.find((q) => q.id === id);
   if (!s) throw new RuleError('That shift is over.');
   if (s.finishedBy?.includes(c.me)) throw new RuleError('Already paid for this shift.');
@@ -649,15 +649,15 @@ export function shiftFinish(c: Ctx, id: string, served: number, missed: number):
   const J = JOBS[job];
   const secs = (c.now.getTime() - Date.parse(s.startedAt)) / 1000;
   if (secs < SHIFT.minSeconds) throw new RuleError('That shift was too short to pay.');
-  const sv = Math.max(0, Math.min(80, Math.floor(served)));
-  const ms = Math.max(0, Math.min(80, Math.floor(missed)));
+  const sv = Math.max(0, Math.min(150, Math.floor(served)));
+  const ms = Math.max(0, Math.min(150, Math.floor(missed)));
   // Orders can't come faster than the job allows; anything more is not a real shift.
   const maxOrders = Math.ceil(Math.min(secs, SHIFT.shiftSeconds + 30) / J.orderSeconds);
   const real = Math.min(sv, maxOrders);
   const quality = sv + ms === 0 ? 0 : real / (sv + ms);
   const day = today(c);
   const before = jobLevel(jobXp(c.w.couple, job));
-  const pay = shiftPayout({ together: s.together, quality, level: before, shiftsToday: shiftsToday(c.w, c.me, day) });
+  const pay = shiftPayout({ base: J.pay, together: s.together, quality, level: before, shiftsToday: shiftsToday(c.w, c.me, day) });
   c.w.couple.coins += pay;
   c.w.ledger.push({ user: c.me, reason: job, amount: pay, day, at: c.now.toISOString() });
   const xp = real * J.xpPerOrder;
@@ -666,14 +666,15 @@ export function shiftFinish(c: Ctx, id: string, served: number, missed: number):
   const me = c.w.profiles[c.me];
   const locked = JOB_KEYS.filter((k) => jobLock(me, k));
   me.jobs = { ...me.jobs, [job]: (me.jobs?.[job] ?? 0) + 1 };
-  const opened = locked.find((k) => !jobLock(me, k)) ?? null;
+  const openedAll = locked.filter((k) => !jobLock(me, k));
+  const opened = openedAll[0] ?? null;
   s.finishedBy = [...(s.finishedBy ?? []), c.me];
   s.served = sv; s.missed = ms;
   if (!s.together || s.finishedBy.length >= 2) s.status = 'done';
   s.pay = pay;
   const level = jobLevel(jobXp(c.w.couple, job));
   event(c, 'shift', { pay, together: s.together, served: sv, job });
-  return { pay, level, levelUp: level > before, job, opened };
+  return { pay, level, levelUp: level > before, job, opened, openedAll };
 }
 
 // ---------- test mode ----------
