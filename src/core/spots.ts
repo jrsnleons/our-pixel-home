@@ -2,7 +2,8 @@
 // they face, how high they sit. Pure functions so the rules are unit-tested.
 
 import { footprint, ITEM_BY_KEY, type Action, type ItemDef } from '../data/catalog';
-import { blockedTiles, cellsOf, key, neighbors, ROOM, type Placement, type Tile } from './grid';
+import { blockedTiles, cellsOf, inFloor, key, neighbors, type Placement, type Tile } from './grid';
+import { ORIGIN, STUDIO, type HomeLayout } from './layout';
 
 export type Facing = '+x' | '-x' | '+z' | '-z';
 export type Pose = 'sit' | 'lie' | 'stand';
@@ -36,7 +37,7 @@ export function localToWorld(def: ItemDef, p: Pick<Placement, 'x' | 'y' | 'rot'>
     case 2: x = w - lx; z = d - lz; break;
     case 3: x = d - lz; z = lx; break;
   }
-  return { x: -ROOM.w / 2 + p.x + x, z: -ROOM.d / 2 + p.y + z };
+  return { x: -ORIGIN.w / 2 + p.x + x, z: -ORIGIN.d / 2 + p.y + z };
 }
 
 export function frontOf(rot: number): Facing {
@@ -44,7 +45,7 @@ export function frontOf(rot: number): Facing {
 }
 
 function worldToTile(w: { x: number; z: number }): Tile {
-  return { x: Math.floor(w.x + ROOM.w / 2), y: Math.floor(w.z + ROOM.d / 2) };
+  return { x: Math.floor(w.x + ORIGIN.w / 2), y: Math.floor(w.z + ORIGIN.d / 2) };
 }
 
 function step(t: Tile, f: Facing): Tile {
@@ -52,16 +53,15 @@ function step(t: Tile, f: Facing): Tile {
 }
 
 /** A free floor tile next to `t`, preferring the given direction. */
-function approachFor(t: Tile, prefer: Facing, blocked: Set<string>): Tile | null {
+function approachFor(t: Tile, prefer: Facing, blocked: Set<string>, L: HomeLayout): Tile | null {
   const first = step(t, prefer);
-  const inRoom = (q: Tile) => q.x >= 0 && q.y >= 0 && q.x < ROOM.w && q.y < ROOM.d;
-  if (inRoom(first) && !blocked.has(key(first.x, first.y))) return first;
-  for (const n of neighbors(t)) if (!blocked.has(key(n.x, n.y))) return n;
+  if (inFloor(first, L) && !blocked.has(key(first.x, first.y))) return first;
+  for (const n of neighbors(t, L)) if (!blocked.has(key(n.x, n.y))) return n;
   return null;
 }
 
 /** Spots for using an item. Returns as many as the item offers (two people can share a sofa). */
-export function spotsFor(p: Placement, action: Action, placements: Placement[]): Spot[] {
+export function spotsFor(p: Placement, action: Action, placements: Placement[], L: HomeLayout = STUDIO): Spot[] {
   const def = ITEM_BY_KEY[p.item];
   if (!def || p.surface !== 'floor') return [];
   const blocked = blockedTiles(placements);
@@ -76,7 +76,7 @@ export function spotsFor(p: Placement, action: Action, placements: Placement[]):
       // Head on the pillow (sprite top lands about 0.15 in from the head end).
       const world = localToWorld(def, p, i + 0.5, 1.2);
       const tile = worldToTile(world);
-      const a = approachFor(tile, front, blocked) ?? approachFor(worldToTile(localToWorld(def, p, i + 0.5, d - 0.5)), front, blocked);
+      const a = approachFor(tile, front, blocked, L) ?? approachFor(worldToTile(localToWorld(def, p, i + 0.5, d - 0.5)), front, blocked, L);
       if (a) out.push({ approach: a, world, facing: front, height: h, pose: 'lie', lieRot: p.rot });
     }
     return out;
@@ -88,7 +88,7 @@ export function spotsFor(p: Placement, action: Action, placements: Placement[]):
     for (let i = 0; i < w; i++) {
       const world = localToWorld(def, p, i + 0.5, row);
       const tile = worldToTile(world);
-      const a = approachFor(tile, front, blocked);
+      const a = approachFor(tile, front, blocked, L);
       if (a) out.push({ approach: a, world, facing: front, height: h, pose: 'sit' });
     }
     return out;
@@ -104,12 +104,12 @@ export function spotsFor(p: Placement, action: Action, placements: Placement[]):
     for (const c of cells) for (const dir of FRONT) {
       const n = step(c, dir);
       const k = key(n.x, n.y);
-      if (cellKeys.has(k) || seen.has(k) || n.x < 0 || n.y < 0 || n.x >= ROOM.w || n.y >= ROOM.d) continue;
+      if (cellKeys.has(k) || seen.has(k) || !inFloor(n, L)) continue;
       seen.add(k);
       const seat = placements.find((q) => q.surface === 'floor' && ITEM_BY_KEY[q.item]?.category === 'seating' && ITEM_BY_KEY[q.item]!.size?.[0] === 1 && cellsOf(ITEM_BY_KEY[q.item]!, q).some((t) => t.x === n.x && t.y === n.y));
       if (blocked.has(k) && !seat) continue;
-      const world = { x: -ROOM.w / 2 + n.x + 0.5, z: -ROOM.d / 2 + n.y + 0.5 };
-      const approach = seat ? approachFor(n, OPP[dir], blocked) : n;
+      const world = { x: -ORIGIN.w / 2 + n.x + 0.5, z: -ORIGIN.d / 2 + n.y + 0.5 };
+      const approach = seat ? approachFor(n, OPP[dir], blocked, L) : n;
       if (!approach) continue;
       cand.push({ approach, world, facing: OPP[dir], height: seat ? SEAT_HEIGHT[seat.item] ?? 0 : 0, pose: 'sit' });
     }
@@ -129,14 +129,14 @@ export function spotsFor(p: Placement, action: Action, placements: Placement[]):
   const cells = cellsOf(def, p);
   for (const c of cells) {
     const n = step(c, front);
-    if (n.x < 0 || n.y < 0 || n.x >= ROOM.w || n.y >= ROOM.d || blocked.has(key(n.x, n.y))) continue;
-    out.push({ approach: n, world: { x: -ROOM.w / 2 + n.x + 0.5, z: -ROOM.d / 2 + n.y + 0.5 }, facing: OPP[front], height: 0, pose: 'stand' });
+    if (!inFloor(n, L) || blocked.has(key(n.x, n.y))) continue;
+    out.push({ approach: n, world: { x: -ORIGIN.w / 2 + n.x + 0.5, z: -ORIGIN.d / 2 + n.y + 0.5 }, facing: OPP[front], height: 0, pose: 'stand' });
   }
   if (!out.length) {
-    for (const c of cells) for (const n of neighbors(c)) {
+    for (const c of cells) for (const n of neighbors(c, L)) {
       if (blocked.has(key(n.x, n.y)) || cells.some((q) => q.x === n.x && q.y === n.y)) continue;
       const dir = (['+x', '-x', '+z', '-z'] as Facing[]).find((f) => { const s = step(n, f); return s.x === c.x && s.y === c.y; })!;
-      out.push({ approach: n, world: { x: -ROOM.w / 2 + n.x + 0.5, z: -ROOM.d / 2 + n.y + 0.5 }, facing: dir, height: 0, pose: 'stand' });
+      out.push({ approach: n, world: { x: -ORIGIN.w / 2 + n.x + 0.5, z: -ORIGIN.d / 2 + n.y + 0.5 }, facing: dir, height: 0, pose: 'stand' });
     }
   }
   return out;

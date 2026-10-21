@@ -4,8 +4,10 @@
 // wainscot.
 
 import { footprint, ITEM_BY_KEY, type ItemDef } from '../data/catalog';
+import { floorTiles, ORIGIN, STUDIO, type HomeLayout } from './layout';
 
-export const ROOM = { w: 7, d: 7, wallRows: 3, wallHeight: 4, wainscot: 1 } as const;
+/** Wall dimensions shared by every home. w and d are the studio, which anchors the world frame. */
+export const ROOM = { w: ORIGIN.w, d: ORIGIN.d, wallRows: 3, wallHeight: 4, wainscot: 1 } as const;
 
 export type Surface = 'floor' | 'back' | 'left';
 
@@ -22,14 +24,8 @@ export interface Placement {
 
 export interface Tile { x: number; y: number }
 
-/** Wall cells the room itself uses: the window on the back wall and the door on the left. */
-export const FIXED_WALL_CELLS: Record<'back' | 'left', Tile[]> = {
-  back: [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
-  left: [{ x: 4, y: 0 }, { x: 5, y: 0 }, { x: 4, y: 1 }, { x: 5, y: 1 }],
-};
-
-/** The tile just inside the door, where an arriving partner appears. */
-export const DOOR_TILE: Tile = { x: 0, y: 5 };
+/** The studio's door tile, where an arriving partner appears (see HomeLayout.door). */
+export const DOOR_TILE: Tile = STUDIO.door;
 
 export const key = (x: number, y: number) => `${x},${y}`;
 
@@ -44,13 +40,16 @@ export function blocksWalking(def: ItemDef): boolean {
   return def.kind === 'floor-item' && !def.flat && !def.hanging;
 }
 
-export function inFloor(t: Tile): boolean {
-  return t.x >= 0 && t.y >= 0 && t.x < ROOM.w && t.y < ROOM.d;
+export function inFloor(t: Tile, L: HomeLayout = STUDIO): boolean {
+  return floorTiles(L).has(key(t.x, t.y));
 }
 
-export function inWall(t: Tile, surface: 'back' | 'left'): boolean {
-  const len = surface === 'back' ? ROOM.w : ROOM.d;
-  return t.x >= 0 && t.y >= 0 && t.x < len && t.y < ROOM.wallRows;
+export function wallLength(surface: 'back' | 'left', L: HomeLayout = STUDIO): number {
+  return surface === 'back' ? L.w : L.d;
+}
+
+export function inWall(t: Tile, surface: 'back' | 'left', L: HomeLayout = STUDIO): boolean {
+  return t.x >= 0 && t.y >= 0 && t.x < wallLength(surface, L) && t.y < ROOM.wallRows;
 }
 
 /** Floor tiles people can't walk on. */
@@ -75,20 +74,21 @@ export function canPlace(
   def: ItemDef,
   spot: { surface: Surface; x: number; y: number; rot: number },
   placements: Placement[],
-  opts: { ignoreId?: string; occupiedByPeople?: Tile[] } = {},
+  opts: { ignoreId?: string; occupiedByPeople?: Tile[]; layout?: HomeLayout } = {},
 ): FitResult {
+  const L = opts.layout ?? STUDIO;
   const cells = cellsOf(def, spot);
   const bad: Tile[] = [];
   if (def.kind === 'wall-item') {
     if (spot.surface === 'floor') return { ok: false, reason: 'This goes on a wall.', bad: cells };
     const wall = spot.surface;
-    const taken = new Set(FIXED_WALL_CELLS[wall].map((c) => key(c.x, c.y)));
+    const taken = new Set(L.fixedWall[wall].map((c) => key(c.x, c.y)));
     for (const p of placements) {
       if (p.id === opts.ignoreId || p.surface !== wall) continue;
       const d = ITEM_BY_KEY[p.item];
       if (d) for (const c of cellsOf(d, p)) taken.add(key(c.x, c.y));
     }
-    for (const c of cells) if (!inWall(c, wall) || taken.has(key(c.x, c.y))) bad.push(c);
+    for (const c of cells) if (!inWall(c, wall, L) || taken.has(key(c.x, c.y))) bad.push(c);
     return bad.length ? { ok: false, reason: 'That spot on the wall is taken.', bad } : { ok: true };
   }
   if (spot.surface !== 'floor') return { ok: false, reason: 'This goes on the floor.', bad: cells };
@@ -103,52 +103,52 @@ export function canPlace(
   }
   const people = new Set((mine === 'solid' ? opts.occupiedByPeople ?? [] : []).map((t) => key(t.x, t.y)));
   for (const c of cells) {
-    if (!inFloor(c) || taken.has(key(c.x, c.y)) || people.has(key(c.x, c.y))) bad.push(c);
+    if (!inFloor(c, L) || taken.has(key(c.x, c.y)) || people.has(key(c.x, c.y))) bad.push(c);
   }
   if (bad.length) {
-    const outside = bad.some((c) => !inFloor(c));
+    const outside = bad.some((c) => !inFloor(c, L));
     return { ok: false, reason: outside ? 'It doesn’t fit inside the room there.' : 'Something is already there.', bad };
   }
   if (mine === 'solid') {
     const others = placements.filter((p) => p.id !== opts.ignoreId);
     const blocked = blockedTiles([...others, { id: '__probe', item: def.key, ...spot, data: null }]);
-    if (!allFreeTilesConnected(blocked)) return { ok: false, reason: 'That would cut off part of the room.', bad: cells };
+    if (!allFreeTilesConnected(blocked, L)) return { ok: false, reason: 'That would cut off part of the room.', bad: cells };
   }
   return { ok: true };
 }
 
 /** First free spot for an item, scanning from the back-left corner. Used for auto-placing. */
-export function findFreeSpot(def: ItemDef, placements: Placement[], avoid: Tile[] = []): { surface: Surface; x: number; y: number; rot: number } | null {
+export function findFreeSpot(def: ItemDef, placements: Placement[], avoid: Tile[] = [], L: HomeLayout = STUDIO): { surface: Surface; x: number; y: number; rot: number } | null {
   if (def.kind === 'wall-item') {
     for (const surface of ['back', 'left'] as const) {
-      const len = surface === 'back' ? ROOM.w : ROOM.d;
+      const len = wallLength(surface, L);
       for (let y = ROOM.wallRows - 1; y >= 0; y--) for (let x = 0; x < len; x++) {
         const spot = { surface, x, y, rot: 0 };
-        if (canPlace(def, spot, placements).ok) return spot;
+        if (canPlace(def, spot, placements, { layout: L }).ok) return spot;
       }
     }
     return null;
   }
-  for (const rot of [0, 1]) for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) {
+  for (const rot of [0, 1]) for (let y = 0; y < L.d; y++) for (let x = 0; x < L.w; x++) {
     const spot = { surface: 'floor' as const, x, y, rot };
-    if (canPlace(def, spot, placements, { occupiedByPeople: avoid }).ok) return spot;
+    if (canPlace(def, spot, placements, { occupiedByPeople: avoid, layout: L }).ok) return spot;
   }
   return null;
 }
 
 /** True if every walkable tile can reach every other one. Placement refuses to cut the room in two. */
-export function allFreeTilesConnected(blocked: Set<string>): boolean {
+export function allFreeTilesConnected(blocked: Set<string>, L: HomeLayout = STUDIO): boolean {
   let start: Tile | null = null;
   let total = 0;
-  for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) {
-    if (!blocked.has(key(x, y))) { total++; start ??= { x, y }; }
+  for (let y = 0; y < L.d; y++) for (let x = 0; x < L.w; x++) {
+    if (inFloor({ x, y }, L) && !blocked.has(key(x, y))) { total++; start ??= { x, y }; }
   }
   if (!start) return true;
   const seen = new Set([key(start.x, start.y)]);
   const q = [start];
   while (q.length) {
     const t = q.pop()!;
-    for (const n of neighbors(t)) {
+    for (const n of neighbors(t, L)) {
       const k = key(n.x, n.y);
       if (!seen.has(k) && !blocked.has(k)) { seen.add(k); q.push(n); }
     }
@@ -156,13 +156,13 @@ export function allFreeTilesConnected(blocked: Set<string>): boolean {
   return seen.size === total;
 }
 
-export function neighbors(t: Tile): Tile[] {
+export function neighbors(t: Tile, L: HomeLayout = STUDIO): Tile[] {
   return [
     { x: t.x + 1, y: t.y }, { x: t.x - 1, y: t.y }, { x: t.x, y: t.y + 1 }, { x: t.x, y: t.y - 1 },
-  ].filter(inFloor);
+  ].filter((n) => inFloor(n, L));
 }
 
-/** World position of a floor tile's center. The room spans -3.5..3.5 on both axes. */
+/** World position of a floor tile's center. Anchored on the studio: tile (0, 0) is at (-3, -3) in every home. */
 export function tileToWorld(t: Tile): { x: number; z: number } {
   return { x: t.x - ROOM.w / 2 + 0.5, z: t.y - ROOM.d / 2 + 0.5 };
 }

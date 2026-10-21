@@ -7,6 +7,7 @@ import type { JobKey } from '../data/jobs';
 import type { AvatarLook } from '../engine/art/avatar';
 import type { SettleState, InteractionPlay } from '../engine/scene';
 import type { Tile } from '../core/grid';
+import type { HomeId } from '../core/layout';
 
 export interface Profile {
   id: string;
@@ -49,6 +50,8 @@ export interface Couple {
   coins: number;
   slots: number;
   style: RoomStyleRow;
+  /** Which home the couple lives in; older couples have none, which means the studio. */
+  home?: HomeId;
   cafeXp: number;
   /** Experience at the other jobs (the café keeps cafeXp). */
   jobXp?: Partial<Record<JobKey, number>>;

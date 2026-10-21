@@ -3,9 +3,10 @@
 
 import * as THREE from 'three';
 import { mix } from '../core/color';
-import { blockedTiles, canPlace, cellsOf, findFreeSpot, key, ROOM, tileToWorld, worldToTile, type FitResult, type Placement, type Surface, type Tile } from '../core/grid';
+import { blockedTiles, canPlace, cellsOf, findFreeSpot, inFloor, key, ROOM, tileToWorld, wallLength, worldToTile, type FitResult, type Placement, type Surface, type Tile } from '../core/grid';
 import { findPath, nearestFree, pathToAdjacent } from '../core/pathfinding';
 import { frontOf, spotsFor, type Spot } from '../core/spots';
+import { ORIGIN, STUDIO, type HomeLayout } from '../core/layout';
 import { footprint, ITEM_BY_KEY, type Action } from '../data/catalog';
 import { INTERACTION_BY_ID } from '../data/interactions';
 import { THEMES, type Theme, type ThemeKey } from '../data/themes';
@@ -78,8 +79,9 @@ export class HomeScene {
   private interacting = false;
   /** Decorate mode */
   decorating = false;
-  private gridFloor: THREE.InstancedMesh;
-  private gridWalls: { back: THREE.InstancedMesh; left: THREE.InstancedMesh };
+  private L: HomeLayout;
+  private gridFloor!: THREE.InstancedMesh;
+  private gridWalls!: { back: THREE.InstancedMesh; left: THREE.InstancedMesh };
   private placing: (PlacingState & { ghost: THREE.Group; art: ItemArt | WallArt; data?: Record<string, unknown> | null }) | null = null;
   private selected: string | null = null;
   private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number }>();
@@ -87,8 +89,9 @@ export class HomeScene {
   private zoomStart = 1;
   private dragging = false;
 
-  constructor(canvas: HTMLCanvasElement, themeKey: ThemeKey, style: RoomStyle, looks: { me: AvatarLook; partner: AvatarLook }, readonly events: SceneEvents) {
+  constructor(canvas: HTMLCanvasElement, themeKey: ThemeKey, style: RoomStyle, looks: { me: AvatarLook; partner: AvatarLook }, readonly events: SceneEvents, layout: HomeLayout = STUDIO) {
     this.r = new Renderer(canvas);
+    this.L = layout;
     this.theme = THEMES[themeKey];
     this.style = style;
     this.r.scene.add(this.fx.group);
@@ -97,10 +100,7 @@ export class HomeScene {
       this.lights.push(l);
       this.r.scene.add(l);
     }
-    this.gridFloor = this.makeGrid(ROOM.w * ROOM.d);
-    this.gridWalls = { back: this.makeGrid(ROOM.w * ROOM.wallRows), left: this.makeGrid(ROOM.d * ROOM.wallRows) };
-    this.r.scene.add(this.gridFloor, this.gridWalls.back, this.gridWalls.left);
-    this.layoutGrids();
+    this.buildGrids();
     this.buildRoom();
     this.me = new Actor(looks.me, { x: 3, y: 4 }, true);
     this.partner = new Actor(looks.partner, { x: 4, y: 4 }, false);
@@ -112,7 +112,7 @@ export class HomeScene {
 
   private buildRoom() {
     if (this.room) { this.r.scene.remove(this.room.group); this.room.dispose(); }
-    this.room = new RoomShell(this.theme, this.style);
+    this.room = new RoomShell(this.theme, this.style, this.L);
     this.r.scene.add(this.room.group);
     this.r.setShadowLight(this.room.sun);
     const m = this.theme.mood;
@@ -130,6 +130,20 @@ export class HomeScene {
     this.placements = [];
     this.sync(all);
   }
+
+  /** The home grew (or shrank): rebuild the shell and the decorate grids, then put everything back. */
+  setLayout(L: HomeLayout) {
+    if (L === this.L) return;
+    this.L = L;
+    this.buildRoom();
+    this.buildGrids();
+    const all = this.placements;
+    for (const id of [...this.items.keys()]) this.removeInst(id);
+    this.placements = [];
+    this.sync(all);
+  }
+
+  get layout(): HomeLayout { return this.L; }
 
   setStyle(style: RoomStyle) {
     this.style = style;
@@ -186,7 +200,7 @@ export class HomeScene {
     const blocked = blockedTiles(this.placements);
     for (const a of [this.me, this.partner]) {
       if (a.elevation > 0.01 || a.lying) continue;
-      if (blocked.has(key(a.tile.x, a.tile.y))) { const t = nearestFree(a.tile, blocked); if (t) a.place(t); }
+      if (blocked.has(key(a.tile.x, a.tile.y))) { const t = nearestFree(a.tile, blocked, this.L); if (t) a.place(t); }
     }
   }
 
@@ -269,10 +283,10 @@ export class HomeScene {
       g.position.set(0, 0, 0);
       if (p.surface === 'back') {
         inst.root.rotation.set(0, 0, 0);
-        inst.root.position.set(-ROOM.w / 2 + p.x, ROOM.wainscot + p.y, -ROOM.d / 2 + 0.01);
+        inst.root.position.set(-ORIGIN.w / 2 + p.x, ROOM.wainscot + p.y, -ORIGIN.d / 2 + 0.01);
       } else {
         inst.root.rotation.set(0, Math.PI / 2, 0);
-        inst.root.position.set(-ROOM.w / 2 + 0.01, ROOM.wainscot + p.y, -ROOM.d / 2 + p.x + w);
+        inst.root.position.set(-ORIGIN.w / 2 + 0.01, ROOM.wainscot + p.y, -ORIGIN.d / 2 + p.x + w);
       }
       return;
     }
@@ -280,7 +294,7 @@ export class HomeScene {
     const [W, D] = footprint(def, p.rot);
     g.position.set(-w / 2, 0, -d / 2);
     inst.root.rotation.set(0, (p.rot * Math.PI) / 2, 0);
-    inst.root.position.set(-ROOM.w / 2 + p.x + W / 2, 0, -ROOM.d / 2 + p.y + D / 2);
+    inst.root.position.set(-ORIGIN.w / 2 + p.x + W / 2, 0, -ORIGIN.d / 2 + p.y + D / 2);
     // Billboards inside rotated furniture still face the camera.
     g.traverse((o) => { if (o.userData.billboard) o.rotation.y = -(p.rot * Math.PI) / 2 + Math.atan2(0.62, 0.78); });
   }
@@ -346,15 +360,15 @@ export class HomeScene {
 
   placeActors(me: Tile, partner: Tile) {
     const blocked = blockedTiles(this.placements);
-    this.me.place(blocked.has(key(me.x, me.y)) ? nearestFree(me, blocked) ?? me : me);
-    this.partner.place(blocked.has(key(partner.x, partner.y)) ? nearestFree(partner, blocked) ?? partner : partner);
+    this.me.place(blocked.has(key(me.x, me.y)) ? nearestFree(me, blocked, this.L) ?? me : me);
+    this.partner.place(blocked.has(key(partner.x, partner.y)) ? nearestFree(partner, blocked, this.L) ?? partner : partner);
   }
 
   /** Where someone sleeps: the best bed in the room, or the floor by the door. */
   private bedSpot(which: 0 | 1): Spot | null {
     const beds = this.placements.filter((p) => ITEM_BY_KEY[p.item]?.category === 'bed').sort((a, b) => (ITEM_BY_KEY[b.item]!.tier ?? 0) - (ITEM_BY_KEY[a.item]!.tier ?? 0));
     for (const b of beds) {
-      const spots = spotsFor(b, 'sleep', this.placements);
+      const spots = spotsFor(b, 'sleep', this.placements, this.L);
       if (spots.length) return spots[Math.min(which, spots.length - 1)];
     }
     return null;
@@ -382,7 +396,7 @@ export class HomeScene {
   /** Get out of bed and stretch. */
   wake(a: Actor) {
     const blocked = blockedTiles(this.placements);
-    const t = nearestFree(worldToTile(a.pos.x, a.pos.z), blocked) ?? a.tile;
+    const t = nearestFree(worldToTile(a.pos.x, a.pos.z), blocked, this.L) ?? a.tile;
     a.stand();
     a.place(t);
     a.play({ frames: ['cheer', 'cheer', 'idle2', 'idle'], fps: 2, loop: false });
@@ -435,9 +449,9 @@ export class HomeScene {
     const me = this.me;
     const blocked = blockedTiles(this.placements);
     if (me.lying || me.elevation > 0.01) { me.stand(); this.events.settled(null); }
-    const start = blocked.has(key(me.tile.x, me.tile.y)) ? nearestFree(me.tile, blocked) ?? me.tile : me.tile;
+    const start = blocked.has(key(me.tile.x, me.tile.y)) ? nearestFree(me.tile, blocked, this.L) ?? me.tile : me.tile;
     if (start !== me.tile) me.place(start);
-    const path = blocked.has(key(t.x, t.y)) ? pathToAdjacent(start, [t], blocked) : findPath(start, t, blocked);
+    const path = blocked.has(key(t.x, t.y)) ? pathToAdjacent(start, [t], blocked, undefined, this.L) : findPath(start, t, blocked, this.L);
     if (!path) return false;
     me.walk(path, then);
     this.events.walked(start, path);
@@ -447,7 +461,7 @@ export class HomeScene {
   /** Use a piece of furniture: walk over, then sit, sleep or stand facing it. Resolves when in place. */
   useFurniture(p: Placement, action: Action): Promise<boolean> {
     return new Promise((resolve) => {
-      const spots = spotsFor(p, action, this.placements);
+      const spots = spotsFor(p, action, this.placements, this.L);
       const partnerTile = this.partner.tile;
       const spot = spots.find((s) => !(s.approach.x === partnerTile.x && s.approach.y === partnerTile.y && this.partner.elevation > 0.01)) ?? spots[0];
       if (!spot) { resolve(false); return; }
@@ -465,7 +479,7 @@ export class HomeScene {
   /** Both avatars use a table or seat together (games, sit together). */
   bothUse(p: Placement, action: Action, partnerToo: boolean): Promise<{ a: SettleState; b: SettleState } | null> {
     return new Promise((resolve) => {
-      const spots = spotsFor(p, action, this.placements);
+      const spots = spotsFor(p, action, this.placements, this.L);
       if (spots.length < (partnerToo ? 2 : 1)) { resolve(null); return; }
       const [sa, sb] = spots;
       const ok = this.walkMeTo(sa.approach, () => {
@@ -496,7 +510,7 @@ export class HomeScene {
     if (def.arrange === 'seat' || def.arrange === 'bed') {
       const action: Action = def.arrange === 'bed' ? 'sleep' : 'sit';
       const allowed = def.needs?.items ?? [];
-      const seat = this.placements.find((p) => allowed.includes(p.item) && spotsFor(p, action, this.placements).length >= 2);
+      const seat = this.placements.find((p) => allowed.includes(p.item) && spotsFor(p, action, this.placements, this.L).length >= 2);
       if (!seat) return null;
       const res = await this.bothUse(seat, action, true);
       if (!res) return null;
@@ -513,7 +527,7 @@ export class HomeScene {
       if (me.lying || me.elevation > 0.01) me.stand();
       const adjacent = Math.abs(me.tile.x - target.x) + Math.abs(me.tile.y - target.y) === 1 && prefer(me.tile) === 0;
       if (!adjacent) {
-        const path = pathToAdjacent(me.tile, [target], blocked, prefer);
+        const path = pathToAdjacent(me.tile, [target], blocked, prefer, this.L);
         if (!path) return null;
         const arrived = new Promise<void>((res) => me.walk(path, res));
         this.events.walked(me.tile, path);
@@ -610,13 +624,13 @@ export class HomeScene {
     // The partner's avatar darts to random free tiles while mine follows, then a hug.
     const blocked = blockedTiles(this.placements);
     const free: Tile[] = [];
-    for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) if (!blocked.has(key(x, y))) free.push({ x, y });
+    for (let y = 0; y < this.L.d; y++) for (let x = 0; x < this.L.w; x++) if (inFloor({ x, y }, this.L) && !blocked.has(key(x, y))) free.push({ x, y });
     const run = (i: number) => {
       if (i >= 3) return;
       const goal = free[(Math.random() * free.length) | 0];
-      const pp = findPath(this.partner.tile, goal, blocked);
+      const pp = findPath(this.partner.tile, goal, blocked, this.L);
       if (pp) { this.partner.speed = 3.6; this.partner.walk(pp); }
-      this.after(0.4, () => { const mp = pathToAdjacent(this.me.tile, [goal], blocked); if (mp) { this.me.speed = 3.4; this.me.walk(mp); this.events.walked(this.me.tile, mp); } });
+      this.after(0.4, () => { const mp = pathToAdjacent(this.me.tile, [goal], blocked, undefined, this.L); if (mp) { this.me.speed = 3.4; this.me.walk(mp); this.events.walked(this.me.tile, mp); } });
       this.after(seconds / 3, () => run(i + 1));
     };
     run(0);
@@ -646,21 +660,36 @@ export class HomeScene {
     return m;
   }
 
+  private buildGrids() {
+    for (const m of [this.gridFloor, this.gridWalls?.back, this.gridWalls?.left]) if (m) { this.r.scene.remove(m); m.dispose(); }
+    this.gridFloor = this.makeGrid(this.L.w * this.L.d);
+    this.gridWalls = { back: this.makeGrid(this.L.w * ROOM.wallRows), left: this.makeGrid(this.L.d * ROOM.wallRows) };
+    this.r.scene.add(this.gridFloor, this.gridWalls.back, this.gridWalls.left);
+    this.layoutGrids();
+  }
+
   private layoutGrids() {
+    const L = this.L;
     const mat = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const s = new THREE.Vector3(1, 1, 1);
     q.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
-    for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) {
+    const none = new THREE.Vector3(0, 0, 0);
+    for (let y = 0; y < L.d; y++) for (let x = 0; x < L.w; x++) {
       const w = tileToWorld({ x, y });
-      mat.compose(new THREE.Vector3(w.x, 0.02, w.z), q, s);
-      this.gridFloor.setMatrixAt(y * ROOM.w + x, mat);
+      // Tiles outside every room are squashed to nothing so the grid only covers real floor.
+      mat.compose(new THREE.Vector3(w.x, 0.02, w.z), q, inFloor({ x, y }, L) ? s : none);
+      this.gridFloor.setMatrixAt(y * L.w + x, mat);
     }
-    for (let y = 0; y < ROOM.wallRows; y++) for (let x = 0; x < ROOM.w; x++) {
-      mat.compose(new THREE.Vector3(-ROOM.w / 2 + x + 0.5, ROOM.wainscot + y + 0.5, -ROOM.d / 2 + 0.03), new THREE.Quaternion(), s);
-      this.gridWalls.back.setMatrixAt(y * ROOM.w + x, mat);
-      mat.compose(new THREE.Vector3(-ROOM.w / 2 + 0.03, ROOM.wainscot + y + 0.5, -ROOM.d / 2 + x + 0.5), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), s);
-      this.gridWalls.left.setMatrixAt(y * ROOM.d + x, mat);
+    for (let y = 0; y < ROOM.wallRows; y++) {
+      for (let x = 0; x < L.w; x++) {
+        mat.compose(new THREE.Vector3(-ORIGIN.w / 2 + x + 0.5, ROOM.wainscot + y + 0.5, -ORIGIN.d / 2 + 0.03), new THREE.Quaternion(), s);
+        this.gridWalls.back.setMatrixAt(y * L.w + x, mat);
+      }
+      for (let x = 0; x < L.d; x++) {
+        mat.compose(new THREE.Vector3(-ORIGIN.w / 2 + 0.03, ROOM.wainscot + y + 0.5, -ORIGIN.d / 2 + x + 0.5), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), s);
+        this.gridWalls.left.setMatrixAt(y * L.d + x, mat);
+      }
     }
     this.paintGrid();
   }
@@ -671,12 +700,13 @@ export class HomeScene {
     const good = new THREE.Color('#5BE07A').multiplyScalar(4), bad = new THREE.Color('#FF5A5A').multiplyScalar(4), sel = new THREE.Color('#FFD25A').multiplyScalar(4);
     const color = (m: THREE.InstancedMesh, i: number, c: THREE.Color) => m.setColorAt(i, c);
     const floorTaken = blockedTiles(this.placements);
-    for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) color(this.gridFloor, y * ROOM.w + x, floorTaken.has(key(x, y)) ? base.clone().multiplyScalar(0.55) : base);
-    for (const w of ['back', 'left'] as const) for (let i = 0; i < ROOM.w * ROOM.wallRows; i++) color(this.gridWalls[w], i, base);
+    const L = this.L;
+    for (let y = 0; y < L.d; y++) for (let x = 0; x < L.w; x++) color(this.gridFloor, y * L.w + x, floorTaken.has(key(x, y)) ? base.clone().multiplyScalar(0.55) : base);
+    for (const w of ['back', 'left'] as const) for (let i = 0; i < wallLength(w, L) * ROOM.wallRows; i++) color(this.gridWalls[w], i, base);
     const mark = (surface: Surface, cells: Tile[], c: THREE.Color) => {
       for (const t of cells) {
-        if (surface === 'floor') { if (t.x >= 0 && t.y >= 0 && t.x < ROOM.w && t.y < ROOM.d) color(this.gridFloor, t.y * ROOM.w + t.x, c); }
-        else if (t.x >= 0 && t.y >= 0 && t.x < ROOM.w && t.y < ROOM.wallRows) color(this.gridWalls[surface], t.y * ROOM.w + t.x, c);
+        if (surface === 'floor') { if (inFloor(t, L)) color(this.gridFloor, t.y * L.w + t.x, c); }
+        else if (t.x >= 0 && t.y >= 0 && t.x < wallLength(surface, L) && t.y < ROOM.wallRows) color(this.gridWalls[surface], t.y * wallLength(surface, L) + t.x, c);
       }
     };
     if (this.selected && !this.placing) {
@@ -709,7 +739,7 @@ export class HomeScene {
     if (!def) return null;
     const existing = opts.placementId ? this.items.get(opts.placementId) : undefined;
     const others = this.placements.filter((p) => p.id !== opts.placementId);
-    const spot = existing ? { surface: existing.p.surface, x: existing.p.x, y: existing.p.y, rot: existing.p.rot } : findFreeSpot(def, others, [this.me.tile, this.partner.tile]) ?? { surface: (def.kind === 'wall-item' ? 'back' : 'floor') as Surface, x: 0, y: 0, rot: 0 };
+    const spot = existing ? { surface: existing.p.surface, x: existing.p.x, y: existing.p.y, rot: existing.p.rot } : findFreeSpot(def, others, [this.me.tile, this.partner.tile], this.L) ?? { surface: (def.kind === 'wall-item' ? 'back' : 'floor') as Surface, x: 0, y: 0, rot: 0 };
     const art = def.kind === 'wall-item' ? buildWallItem(item, this.theme) : buildFloorItem(item, this.theme, opts.data);
     const ghost = new THREE.Group();
     ghost.add(art.group);
@@ -737,7 +767,7 @@ export class HomeScene {
     const def = ITEM_BY_KEY[pl.item]!;
     const others = this.placements.filter((p) => p.id !== pl.placementId);
     const people = [this.me, this.partner].filter((a) => !a.lying && a.elevation < 0.01).map((a) => a.tile);
-    pl.fit = canPlace(def, pl, others, { occupiedByPeople: people });
+    pl.fit = canPlace(def, pl, others, { occupiedByPeople: people, layout: this.L });
     const fake: Inst = { p: { id: '__ghost', item: pl.item, surface: pl.surface, x: pl.x, y: pl.y, rot: pl.rot }, root: pl.ghost, art: pl.art, wall: def.kind === 'wall-item' };
     this.positionInst(fake);
     this.paintGrid();
@@ -750,8 +780,8 @@ export class HomeScene {
     // Keep the footprint inside the room after rotating.
     const def = ITEM_BY_KEY[this.placing.item]!;
     const [W, D] = footprint(def, this.placing.rot);
-    this.placing.x = Math.min(this.placing.x, ROOM.w - W);
-    this.placing.y = Math.min(this.placing.y, ROOM.d - D);
+    this.placing.x = Math.min(this.placing.x, this.L.w - W);
+    this.placing.y = Math.min(this.placing.y, this.L.d - D);
     this.updatePlacing();
   }
 
@@ -812,19 +842,19 @@ export class HomeScene {
     if (def.kind === 'wall-item') {
       const [w, h] = def.size ?? [1, 1];
       const hitBack = new THREE.Vector3(), hitLeft = new THREE.Vector3();
-      const okB = this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), ROOM.d / 2), hitBack);
-      const okL = this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(1, 0, 0), ROOM.w / 2), hitLeft);
-      const onBack = okB && hitBack.x >= -ROOM.w / 2 - 0.2;
-      const useLeft = okL && (!onBack || hitLeft.z > -ROOM.d / 2 + 0.2) && hitLeft.z <= ROOM.d / 2 && hitBack.x < -ROOM.w / 2 + 0.6;
+      const okB = this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), ORIGIN.d / 2), hitBack);
+      const okL = this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(1, 0, 0), ORIGIN.w / 2), hitLeft);
+      const onBack = okB && hitBack.x >= -ORIGIN.w / 2 - 0.2 && hitBack.x <= -ORIGIN.w / 2 + this.L.w;
+      const useLeft = okL && (!onBack || hitLeft.z > -ORIGIN.d / 2 + 0.2) && hitLeft.z <= -ORIGIN.d / 2 + this.L.d && hitBack.x < -ORIGIN.w / 2 + 0.6;
       if (useLeft) {
         pl.surface = 'left';
-        pl.x = Math.round(hitLeft.z + ROOM.d / 2 - w / 2);
+        pl.x = Math.round(hitLeft.z + ORIGIN.d / 2 - w / 2);
         pl.y = Math.round(hitLeft.y - ROOM.wainscot - h / 2);
         // On the left wall the item's x runs toward the back corner; flip so it follows the finger.
-        pl.x = Math.max(0, Math.min(ROOM.d - w, pl.x));
+        pl.x = Math.max(0, Math.min(this.L.d - w, pl.x));
       } else if (onBack) {
         pl.surface = 'back';
-        pl.x = Math.max(0, Math.min(ROOM.w - w, Math.round(hitBack.x + ROOM.w / 2 - w / 2)));
+        pl.x = Math.max(0, Math.min(this.L.w - w, Math.round(hitBack.x + ORIGIN.w / 2 - w / 2)));
         pl.y = Math.round(hitBack.y - ROOM.wainscot - h / 2);
       }
       pl.y = Math.max(0, Math.min(ROOM.wallRows - h, pl.y));
@@ -832,8 +862,8 @@ export class HomeScene {
       const hit = new THREE.Vector3();
       if (!this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return;
       const [W, D] = footprint(def, pl.rot);
-      pl.x = Math.max(0, Math.min(ROOM.w - W, Math.round(hit.x + ROOM.w / 2 - W / 2)));
-      pl.y = Math.max(0, Math.min(ROOM.d - D, Math.round(hit.z + ROOM.d / 2 - D / 2)));
+      pl.x = Math.max(0, Math.min(this.L.w - W, Math.round(hit.x + ORIGIN.w / 2 - W / 2)));
+      pl.y = Math.max(0, Math.min(this.L.d - D, Math.round(hit.z + ORIGIN.d / 2 - D / 2)));
     }
     this.updatePlacing();
   }
@@ -935,7 +965,7 @@ export class HomeScene {
     const hit = new THREE.Vector3();
     if (this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) {
       const t = worldToTile(hit.x, hit.z);
-      if (t.x >= 0 && t.y >= 0 && t.x < ROOM.w && t.y < ROOM.d) {
+      if (inFloor(t, this.L)) {
         this.events.tapEmpty();
         if (!this.interacting) this.walkMeTo(t);
         this.fx.spawn('sparkle', new THREE.Vector3(hit.x, 0.1, hit.z), { life: 0.5, rise: 0.4, size: 0.25, spread: 0 });

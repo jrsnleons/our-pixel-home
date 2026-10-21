@@ -569,12 +569,40 @@ function footprint(def2, rot) {
   return rot % 2 === 0 ? [w, d] : [d, w];
 }
 
-// src/core/grid.ts
-var ROOM = { w: 7, d: 7, wallRows: 3, wallHeight: 4, wainscot: 1 };
-var FIXED_WALL_CELLS = {
-  back: [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
-  left: [{ x: 4, y: 0 }, { x: 5, y: 0 }, { x: 4, y: 1 }, { x: 5, y: 1 }]
+// src/core/layout.ts
+var ORIGIN = { w: 7, d: 7 };
+var STUDIO = {
+  id: "studio",
+  name: "Studio",
+  blurb: "One cozy room. Everyone starts here.",
+  price: 0,
+  w: 7,
+  d: 7,
+  rooms: [{ id: "main", name: "Studio", x: 0, y: 0, w: 7, d: 7 }],
+  fixedWall: {
+    back: [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
+    left: [{ x: 4, y: 0 }, { x: 5, y: 0 }, { x: 4, y: 1 }, { x: 5, y: 1 }]
+  },
+  door: { x: 0, y: 5 }
 };
+var LAYOUTS = { studio: STUDIO };
+function layoutOf(id) {
+  return LAYOUTS[id ?? "studio"] ?? STUDIO;
+}
+var floors = /* @__PURE__ */ new WeakMap();
+function floorTiles(L) {
+  let s = floors.get(L);
+  if (!s) {
+    s = /* @__PURE__ */ new Set();
+    for (const r of L.rooms) for (let y = r.y; y < r.y + r.d; y++) for (let x = r.x; x < r.x + r.w; x++) s.add(`${x},${y}`);
+    floors.set(L, s);
+  }
+  return s;
+}
+
+// src/core/grid.ts
+var ROOM = { w: ORIGIN.w, d: ORIGIN.d, wallRows: 3, wallHeight: 4, wainscot: 1 };
+var DOOR_TILE = STUDIO.door;
 var key = (x, y) => `${x},${y}`;
 function cellsOf(def2, p) {
   const [w, d] = def2.kind === "wall-item" ? def2.size ?? [1, 1] : footprint(def2, p.rot);
@@ -585,12 +613,14 @@ function cellsOf(def2, p) {
 function blocksWalking(def2) {
   return def2.kind === "floor-item" && !def2.flat && !def2.hanging;
 }
-function inFloor(t) {
-  return t.x >= 0 && t.y >= 0 && t.x < ROOM.w && t.y < ROOM.d;
+function inFloor(t, L = STUDIO) {
+  return floorTiles(L).has(key(t.x, t.y));
 }
-function inWall(t, surface) {
-  const len = surface === "back" ? ROOM.w : ROOM.d;
-  return t.x >= 0 && t.y >= 0 && t.x < len && t.y < ROOM.wallRows;
+function wallLength(surface, L = STUDIO) {
+  return surface === "back" ? L.w : L.d;
+}
+function inWall(t, surface, L = STUDIO) {
+  return t.x >= 0 && t.y >= 0 && t.x < wallLength(surface, L) && t.y < ROOM.wallRows;
 }
 function blockedTiles(placements, ignoreId) {
   const s = /* @__PURE__ */ new Set();
@@ -603,18 +633,19 @@ function blockedTiles(placements, ignoreId) {
   return s;
 }
 function canPlace(def2, spot2, placements, opts = {}) {
+  const L = opts.layout ?? STUDIO;
   const cells = cellsOf(def2, spot2);
   const bad = [];
   if (def2.kind === "wall-item") {
     if (spot2.surface === "floor") return { ok: false, reason: "This goes on a wall.", bad: cells };
     const wall = spot2.surface;
-    const taken2 = new Set(FIXED_WALL_CELLS[wall].map((c) => key(c.x, c.y)));
+    const taken2 = new Set(L.fixedWall[wall].map((c) => key(c.x, c.y)));
     for (const p of placements) {
       if (p.id === opts.ignoreId || p.surface !== wall) continue;
       const d = ITEM_BY_KEY[p.item];
       if (d) for (const c of cellsOf(d, p)) taken2.add(key(c.x, c.y));
     }
-    for (const c of cells) if (!inWall(c, wall) || taken2.has(key(c.x, c.y))) bad.push(c);
+    for (const c of cells) if (!inWall(c, wall, L) || taken2.has(key(c.x, c.y))) bad.push(c);
     return bad.length ? { ok: false, reason: "That spot on the wall is taken.", bad } : { ok: true };
   }
   if (spot2.surface !== "floor") return { ok: false, reason: "This goes on the floor.", bad: cells };
@@ -629,24 +660,24 @@ function canPlace(def2, spot2, placements, opts = {}) {
   }
   const people = new Set((mine === "solid" ? opts.occupiedByPeople ?? [] : []).map((t) => key(t.x, t.y)));
   for (const c of cells) {
-    if (!inFloor(c) || taken.has(key(c.x, c.y)) || people.has(key(c.x, c.y))) bad.push(c);
+    if (!inFloor(c, L) || taken.has(key(c.x, c.y)) || people.has(key(c.x, c.y))) bad.push(c);
   }
   if (bad.length) {
-    const outside = bad.some((c) => !inFloor(c));
+    const outside = bad.some((c) => !inFloor(c, L));
     return { ok: false, reason: outside ? "It doesn\u2019t fit inside the room there." : "Something is already there.", bad };
   }
   if (mine === "solid") {
     const others = placements.filter((p) => p.id !== opts.ignoreId);
     const blocked = blockedTiles([...others, { id: "__probe", item: def2.key, ...spot2, data: null }]);
-    if (!allFreeTilesConnected(blocked)) return { ok: false, reason: "That would cut off part of the room.", bad: cells };
+    if (!allFreeTilesConnected(blocked, L)) return { ok: false, reason: "That would cut off part of the room.", bad: cells };
   }
   return { ok: true };
 }
-function allFreeTilesConnected(blocked) {
+function allFreeTilesConnected(blocked, L = STUDIO) {
   let start = null;
   let total = 0;
-  for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) {
-    if (!blocked.has(key(x, y))) {
+  for (let y = 0; y < L.d; y++) for (let x = 0; x < L.w; x++) {
+    if (inFloor({ x, y }, L) && !blocked.has(key(x, y))) {
       total++;
       start ??= { x, y };
     }
@@ -656,7 +687,7 @@ function allFreeTilesConnected(blocked) {
   const q = [start];
   while (q.length) {
     const t = q.pop();
-    for (const n of neighbors(t)) {
+    for (const n of neighbors(t, L)) {
       const k = key(n.x, n.y);
       if (!seen.has(k) && !blocked.has(k)) {
         seen.add(k);
@@ -666,13 +697,13 @@ function allFreeTilesConnected(blocked) {
   }
   return seen.size === total;
 }
-function neighbors(t) {
+function neighbors(t, L = STUDIO) {
   return [
     { x: t.x + 1, y: t.y },
     { x: t.x - 1, y: t.y },
     { x: t.x, y: t.y + 1 },
     { x: t.x, y: t.y - 1 }
-  ].filter(inFloor);
+  ].filter((n) => inFloor(n, L));
 }
 
 // src/data/interactions.ts
@@ -946,7 +977,7 @@ function place(c, invId, spot2) {
   const row = c.w.inventory.find((r) => r.id === invId);
   if (!row) throw new RuleError("That item isn\u2019t in your storage box.");
   const d = def(row.item);
-  const fit = canPlace(d, spot2, c.w.placements);
+  const fit = canPlace(d, spot2, c.w.placements, { layout: layoutOf(c.w.couple.home) });
   if (!fit.ok) throw new RuleError(fit.reason);
   const id = c.id();
   c.w.placements.push({ id, item: row.item, surface: spot2.surface, x: spot2.x, y: spot2.y, rot: (spot2.rot % 4 + 4) % 4, data: row.data });
@@ -957,7 +988,7 @@ function place(c, invId, spot2) {
 function move(c, pid, spot2) {
   const p = c.w.placements.find((q) => q.id === pid);
   if (!p) throw new RuleError("That item was moved or stored.");
-  const fit = canPlace(def(p.item), spot2, c.w.placements, { ignoreId: pid });
+  const fit = canPlace(def(p.item), spot2, c.w.placements, { ignoreId: pid, layout: layoutOf(c.w.couple.home) });
   if (!fit.ok) throw new RuleError(fit.reason);
   Object.assign(p, { surface: spot2.surface, x: spot2.x, y: spot2.y, rot: (spot2.rot % 4 + 4) % 4 });
 }

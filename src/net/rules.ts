@@ -4,6 +4,7 @@
 
 import { applyMove, emptyBoard, outcome, type GameKind as BoardKind } from '../core/boardgames';
 import { canPlace, cellsOf, findFreeSpot, type Placement, type Surface } from '../core/grid';
+import { layoutOf } from '../core/layout';
 import { ITEM_BY_KEY, SLOT_UPGRADE, STARTER_COINS, STARTER_PLACEMENTS, STARTER_SLOTS, type ItemDef } from '../data/catalog';
 import { DAILY_LIMITS, QUESTS, REWARDS, SHIFT, jobLevel, milestone, shiftPayout } from '../data/economy';
 import { JOB_KEYS, JOBS, jobLock, jobXp, type JobKey } from '../data/jobs';
@@ -171,7 +172,7 @@ export function place(c: Ctx, invId: string, spot: { surface: Surface; x: number
   const row = c.w.inventory.find((r) => r.id === invId);
   if (!row) throw new RuleError('That item isn’t in your storage box.');
   const d = def(row.item);
-  const fit = canPlace(d, spot, c.w.placements);
+  const fit = canPlace(d, spot, c.w.placements, { layout: layoutOf(c.w.couple.home) });
   if (!fit.ok) throw new RuleError(fit.reason);
   const id = c.id();
   c.w.placements.push({ id, item: row.item, surface: spot.surface, x: spot.x, y: spot.y, rot: ((spot.rot % 4) + 4) % 4, data: row.data });
@@ -182,7 +183,7 @@ export function place(c: Ctx, invId: string, spot: { surface: Surface; x: number
 export function move(c: Ctx, pid: string, spot: { surface: Surface; x: number; y: number; rot: number }) {
   const p = c.w.placements.find((q) => q.id === pid);
   if (!p) throw new RuleError('That item was moved or stored.');
-  const fit = canPlace(def(p.item), spot, c.w.placements, { ignoreId: pid });
+  const fit = canPlace(def(p.item), spot, c.w.placements, { ignoreId: pid, layout: layoutOf(c.w.couple.home) });
   if (!fit.ok) throw new RuleError(fit.reason);
   Object.assign(p, { surface: spot.surface, x: spot.x, y: spot.y, rot: ((spot.rot % 4) + 4) % 4 });
 }
@@ -201,7 +202,7 @@ export function store(c: Ctx, pid: string) {
 
 /** Put a stored item into the room at the first free spot (used by "Place" in the box). */
 export function autoSpot(w: World, item: string) {
-  return findFreeSpot(def(item), w.placements);
+  return findFreeSpot(def(item), w.placements, [], layoutOf(w.couple.home));
 }
 
 export function setStyle(c: Ctx, style: RoomStyleRow) {

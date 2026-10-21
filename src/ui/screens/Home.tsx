@@ -9,6 +9,7 @@ import { INTERACTION_BY_ID } from '../../data/interactions';
 import { isJob, JOBS, type JobKey } from '../../data/jobs';
 import { THEMES } from '../../data/themes';
 import type { Placement } from '../../core/grid';
+import { layoutOf } from '../../core/layout';
 import { HomeScene, type ScreenPoint, type SettleState } from '../../engine/scene';
 import type { LocalBackend } from '../../net/local';
 import type { GameKind, LiveMsg } from '../../net/types';
@@ -73,7 +74,7 @@ export function Home() {
       settled: (state) => { mySettled.current = state; backend.send({ t: 'settle', state }); },
       decorTap: (p) => decorTapRef.current?.(p),
       placingChanged: (s) => placingRef.current?.(s),
-    });
+    }, layoutOf(s0.couple!.home));
     sceneRef = sc;
     sc.sync(s0.placements);
     sc.partner.group.visible = !!s0.partner;
@@ -126,6 +127,7 @@ export function Home() {
   useSignalEffect(() => {
     const s = snap.value;
     if (!scene || !s?.couple) return;
+    scene.setLayout(layoutOf(s.couple.home));
     scene.sync(s.placements);
     scene.partner.group.visible = !!s.partner;
     const T = THEMES[prefs.value.theme];

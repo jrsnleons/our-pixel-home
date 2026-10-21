@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { mix, ramp, shade } from '../core/color';
 import { ROOM } from '../core/grid';
+import { ORIGIN, STUDIO, type HomeLayout } from '../core/layout';
 import type { Theme } from '../data/themes';
 import { cbox, dispose, flat, pbox } from './art/kit';
 import { solid, wood } from './art/paint';
@@ -13,7 +14,7 @@ import type { Daylight } from './daylight';
 
 export interface RoomStyle { wallpaper: string; wallTint: string; floor: string; floorTint: string | null; curtains: boolean }
 
-const HALF = ROOM.w / 2; // 3.5
+const HALF = ORIGIN.w / 2; // 3.5: the back wall sits at z = -HALF and the left wall at x = -HALF in every home
 const WALL_H = 4.3;
 const WALL_T = 0.25;
 
@@ -32,16 +33,20 @@ export class RoomShell {
   private T: Theme;
   private day: Daylight | null = null;
   private rain: { x: number; y: number; s: number }[] = [];
+  private L: HomeLayout;
 
-  constructor(T: Theme, style: RoomStyle) {
+  constructor(T: Theme, style: RoomStyle, L: HomeLayout = STUDIO) {
     this.T = T;
+    this.L = L;
     const g = this.group;
+    // The studio anchors the world frame, so a bigger home grows toward +x and +z from it.
+    const cx = -HALF + L.w / 2, cz = -HALF + L.d / 2;
 
     // Floor slab: painted top, cut-earth sides.
     this.floorMat = new THREE.MeshLambertMaterial();
-    const slabSide = new THREE.MeshLambertMaterial({ map: this.paintTex(ROOM.w * PPU, 8, (c, w, h) => paintSlab(c, w, h, T.slab)) });
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(ROOM.w, 0.5, ROOM.d), [slabSide, slabSide, this.floorMat, flat(shade(T.slab, -0.3)), slabSide, slabSide]);
-    slab.position.set(0, -0.25, 0);
+    const slabSide = new THREE.MeshLambertMaterial({ map: this.paintTex(L.w * PPU, 8, (c, w, h) => paintSlab(c, w, h, T.slab)) });
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(L.w, 0.5, L.d), [slabSide, slabSide, this.floorMat, flat(shade(T.slab, -0.3)), slabSide, slabSide]);
+    slab.position.set(cx, -0.25, cz);
     slab.receiveShadow = true;
     slab.userData.floor = true;
     g.add(slab);
@@ -49,29 +54,30 @@ export class RoomShell {
     // Walls. They never cast shadows so the sun can reach the room through the "missing" walls.
     const cap = flat(shade(T.wall.trim, -0.25));
     const body = flat(shade(T.wall.trim, -0.1));
-    const back = new THREE.Mesh(new THREE.BoxGeometry(ROOM.w + WALL_T, WALL_H, WALL_T), [body, body, cap, cap, body, body]);
-    back.position.set(-WALL_T / 2, WALL_H / 2, -HALF - WALL_T / 2);
-    const left = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, WALL_H, ROOM.d), [body, body, cap, cap, body, body]);
-    left.position.set(-HALF - WALL_T / 2, WALL_H / 2, 0);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(L.w + WALL_T, WALL_H, WALL_T), [body, body, cap, cap, body, body]);
+    back.position.set(cx - WALL_T / 2, WALL_H / 2, -HALF - WALL_T / 2);
+    const left = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, WALL_H, L.d), [body, body, cap, cap, body, body]);
+    left.position.set(-HALF - WALL_T / 2, WALL_H / 2, cz);
     for (const w of [back, left]) { w.receiveShadow = true; w.userData.wall = w === back ? 'back' : 'left'; g.add(w); }
 
     // Wallpaper and wainscot faces (separate so they can be restyled cheaply).
     for (const side of ['back', 'left'] as const) {
       const paper = new THREE.MeshLambertMaterial();
       this.wallMats.push(paper);
-      const pm = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, WALL_H - ROOM.wainscot), paper);
-      const wm = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.wainscot), new THREE.MeshLambertMaterial({ map: this.paintTex(ROOM.w * PPU, 16, (c, w) => paintWainscot(c, w, T.wall.trim, T.outline)) }));
+      const len = side === 'back' ? L.w : L.d;
+      const pm = new THREE.Mesh(new THREE.PlaneGeometry(len, WALL_H - ROOM.wainscot), paper);
+      const wm = new THREE.Mesh(new THREE.PlaneGeometry(len, ROOM.wainscot), new THREE.MeshLambertMaterial({ map: this.paintTex(len * PPU, 16, (c, w) => paintWainscot(c, w, T.wall.trim, T.outline)) }));
       // Crown molding along the top.
-      const crown = new THREE.Mesh(new THREE.BoxGeometry(ROOM.w, 0.14, 0.1), [flat(T.wall.trim), flat(T.wall.trim), flat(shade(T.wall.trim, 0.12)), flat(T.wall.trim), new THREE.MeshLambertMaterial({ map: this.paintTex(ROOM.w * PPU, 3, (c, w, h) => { px(c, shade(T.wall.trim, 0.1), 0, 0, w, h); px(c, shade(T.wall.trim, -0.15), 0, h - 1, w, 1); for (let x = 0; x < w; x += 4) px(c, shade(T.wall.trim, -0.05), x, 1); }) }), flat(T.wall.trim)]);
+      const crown = new THREE.Mesh(new THREE.BoxGeometry(len, 0.14, 0.1), [flat(T.wall.trim), flat(T.wall.trim), flat(shade(T.wall.trim, 0.12)), flat(T.wall.trim), new THREE.MeshLambertMaterial({ map: this.paintTex(len * PPU, 3, (c, w, h) => { px(c, shade(T.wall.trim, 0.1), 0, 0, w, h); px(c, shade(T.wall.trim, -0.15), 0, h - 1, w, 1); for (let x = 0; x < w; x += 4) px(c, shade(T.wall.trim, -0.05), x, 1); }) }), flat(T.wall.trim)]);
       if (side === 'back') {
-        pm.position.set(0, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, -HALF + 0.002);
-        wm.position.set(0, ROOM.wainscot / 2, -HALF + 0.004);
-        crown.position.set(0, WALL_H - 0.07, -HALF + 0.05);
+        pm.position.set(cx, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, -HALF + 0.002);
+        wm.position.set(cx, ROOM.wainscot / 2, -HALF + 0.004);
+        crown.position.set(cx, WALL_H - 0.07, -HALF + 0.05);
       } else {
         for (const m of [pm, wm, crown]) m.rotation.y = Math.PI / 2;
-        pm.position.set(-HALF + 0.002, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, 0);
-        wm.position.set(-HALF + 0.004, ROOM.wainscot / 2, 0);
-        crown.position.set(-HALF + 0.05, WALL_H - 0.07, 0);
+        pm.position.set(-HALF + 0.002, ROOM.wainscot + (WALL_H - ROOM.wainscot) / 2, cz);
+        wm.position.set(-HALF + 0.004, ROOM.wainscot / 2, cz);
+        crown.position.set(-HALF + 0.05, WALL_H - 0.07, cz);
       }
       for (const m of [pm, wm]) { m.receiveShadow = true; m.userData.wall = side; }
       g.add(pm, wm, crown);
@@ -126,11 +132,12 @@ export class RoomShell {
     // Lights.
     this.hemi = new THREE.HemisphereLight(T.mood.ambient, T.mood.ground, T.mood.ambientPower);
     this.sun = new THREE.DirectionalLight('#ffffff', 1.5);
-    this.sun.position.set(-3, 9, 7);
-    this.sun.target.position.set(0, 0, 0);
+    this.sun.position.set(cx - 3, 9, cz + 7);
+    this.sun.target.position.set(cx, 0, cz);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(1024, 1024);
-    Object.assign(this.sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 26 });
+    const reach = Math.max(L.w, L.d) / 2 + 2.5;
+    Object.assign(this.sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 1, far: 26 });
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.02;
     g.add(this.hemi, this.sun, this.sun.target);
@@ -147,14 +154,14 @@ export class RoomShell {
 
   setStyle(style: RoomStyle) {
     this.floorMat.map?.dispose();
-    this.floorMat.map = this.paintTex(64, 64, (c) => paintFloor(c, style.floor, style.floorTint), [ROOM.w / 4, ROOM.d / 4]);
+    this.floorMat.map = this.paintTex(64, 64, (c) => paintFloor(c, style.floor, style.floorTint), [this.L.w / 4, this.L.d / 4]);
     this.floorMat.needsUpdate = true;
     const key = style.wallpaper;
-    for (const m of this.wallMats) {
+    this.wallMats.forEach((m, i) => {
       m.map?.dispose();
-      m.map = this.paintTex(32, 32, (c) => paintWallpaper(c, key, style.wallTint, this.T.accent), [ROOM.w / 2, (WALL_H - ROOM.wainscot) / 2]);
+      m.map = this.paintTex(32, 32, (c) => paintWallpaper(c, key, style.wallTint, this.T.accent), [(i === 0 ? this.L.w : this.L.d) / 2, (WALL_H - ROOM.wainscot) / 2]);
       m.needsUpdate = true;
-    }
+    });
     this.buildCurtains(style.curtains);
   }
 

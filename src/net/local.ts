@@ -2,7 +2,8 @@
 // walks around, plays games and sends the odd heart, so every feature can be tried alone.
 
 import { applyMove, legalMoves, outcome } from '../core/boardgames';
-import { blockedTiles, key, ROOM, type Tile } from '../core/grid';
+import { blockedTiles, inFloor, key, type Tile } from '../core/grid';
+import { layoutOf } from '../core/layout';
 import { findPath } from '../core/pathfinding';
 import { DRAW_SECONDS } from '../data/words';
 import { DEFAULT_LOOK, type AvatarLook } from '../engine/art/avatar';
@@ -175,11 +176,12 @@ export class LocalBackend implements Backend {
     if (!w) return;
     const blocked = blockedTiles(w.placements);
     const free: Tile[] = [];
-    for (let y = 0; y < ROOM.d; y++) for (let x = 0; x < ROOM.w; x++) if (!blocked.has(key(x, y))) free.push({ x, y });
+    const L = layoutOf(w.couple.home);
+    for (let y = 0; y < L.d; y++) for (let x = 0; x < L.w; x++) if (inFloor({ x, y }, L) && !blocked.has(key(x, y))) free.push({ x, y });
     const pool = near ? free.filter((t) => Math.abs(t.x - near.x) + Math.abs(t.y - near.y) <= 2 && (t.x !== near.x || t.y !== near.y)) : free;
     const target = pool[Math.floor(Math.random() * pool.length)];
     if (!target) return;
-    const path = findPath(this.simTile, target, blocked);
+    const path = findPath(this.simTile, target, blocked, L);
     if (!path || !path.length) return;
     this.h?.live({ t: 'walk', from: this.simTile, path });
     this.simTile = target;
